@@ -332,8 +332,12 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                 resp_cfg["audio"]["output"].pop("voice", None)
 
                     async def _queued_response():
-                        await config.active_sessions[session_id]["commit_consumed_event"].wait()
-                        trans = config.active_sessions[session_id].get("transcription_task")
+                        # Only wait for audio commit if one is in flight (push-to-talk).
+                        # Text-only requests skip this.
+                        sd = config.active_sessions[session_id]
+                        if sd.get("commit_audio_buffer") or sd.get("transcription_task"):
+                            await sd["commit_consumed_event"].wait()
+                        trans = sd.get("transcription_task")
                         if trans and not trans.done():
                             try:
                                 await trans
