@@ -512,16 +512,43 @@
             textInput.value = '';
         }
 
+        function execTool(name, callId, argsStr) {
+            const dispatch = {
+                'get_current_time': execGetCurrentTime,
+                'calculate': execCalculate,
+                'convert_units': execConvertUnits,
+                'get_random_number': execGetRandomNumber,
+                'get_user_location': execGetUserLocation,
+                'roll_dice': execRollDice,
+            };
+            const fn = dispatch[name];
+            if (fn) {
+                fn(callId, argsStr);
+            } else {
+                dc.send(JSON.stringify({
+                    type: "conversation.item.create",
+                    item: { type: "function_call_output", call_id: callId, output: `Unknown tool: ${name}` }
+                }));
+                dc.send(JSON.stringify(buildResponseCreate()));
+            }
+        }
+
+        function sendResult(callId, output) {
+            dc.send(JSON.stringify({
+                type: "conversation.item.create",
+                item: { type: "function_call_output", call_id: callId, output: String(output) }
+            }));
+            dc.send(JSON.stringify(buildResponseCreate()));
+        }
+
         function execGetCurrentTime(callId, argsStr) {
             let tzStr = '';
             try { const p = JSON.parse(argsStr || '{}'); tzStr = p.timezone || ''; } catch(e) {}
             const now = new Date();
             const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
             let hh, mm, ss, day, mon, date, year;
             if (tzStr) {
-                // Parse timezone offset (e.g. "+0900" or "-0500")
                 const sign = tzStr[0] === '-' ? -1 : 1;
                 const offH = parseInt(tzStr.slice(1, 3)) || 0;
                 const offM = parseInt(tzStr.slice(3, 5)) || 0;
@@ -535,33 +562,98 @@
                 mm = String(target.getUTCMinutes()).padStart(2, '0');
                 ss = String(target.getUTCSeconds()).padStart(2, '0');
             } else {
-                // Use local time
-                day = days[now.getDay()];
-                mon = months[now.getMonth()];
-                date = now.getDate();
-                year = now.getFullYear();
+                day = days[now.getDay()]; mon = months[now.getMonth()];
+                date = now.getDate(); year = now.getFullYear();
                 hh = String(now.getHours()).padStart(2, '0');
                 mm = String(now.getMinutes()).padStart(2, '0');
                 ss = String(now.getSeconds()).padStart(2, '0');
-                const localOffset = -now.getTimezoneOffset();
-                const sign = localOffset >= 0 ? '+' : '-';
-                const absOff = Math.abs(localOffset);
-                const offH = String(Math.floor(absOff / 60)).padStart(2, '0');
-                const offM = String(absOff % 60).padStart(2, '0');
-                tzStr = `${sign}${offH}${offM}`;
+                const lo = -now.getTimezoneOffset();
+                tzStr = `${lo >= 0 ? '+' : '-'}${String(Math.floor(Math.abs(lo)/60)).padStart(2,'0')}${String(Math.abs(lo)%60).padStart(2,'0')}`;
             }
+            sendResult(callId, `${day}, ${mon} ${date} ${year} ${hh}:${mm}:${ss}${tzStr}`);
+        }
 
-            const timeStr = `${day}, ${mon} ${date} ${year} ${hh}:${mm}:${ss}${tzStr}`;
+        function execCalculate(callId, argsStr) {
+            try {
+                const p = JSON.parse(argsStr || '{}');
+                const result = Function('"use strict"; return (' + p.expression + ')')();
+                sendResult(callId, `${p.expression} = ${result}`);
+            } catch(e) {
+                sendResult(callId, `Error: ${e.message}`);
+            }
+        }
 
-            dc.send(JSON.stringify({
-                type: "conversation.item.create",
-                item: {
-                    type: "function_call_output",
-                    call_id: callId,
-                    output: timeStr
+        function execConvertUnits(callId, argsStr) {
+            // Conversion factors to base unit, then to target
+            const toBase = {
+                km: 1, miles: 0.621371, m: 1000, cm: 100000, mm: 1000000,
+                kg: 1, lbs: 2.20462, g: 1000,
+                liters: 1, gallons: 0.264172, ml: 1000,
+            };
+            const tempConv = (v, from, to) => {
+                if (from === to) return v;
+                if (from === 'celsius' && to === 'fahrenheit') return v * 9/5 + 32;
+                if (from === 'fahrenheit' && to === 'celsius') return (v - 32) * 5/9;
+                return null;
+            };
+            try {
+                const p = JSON.parse(argsStr || '{}');
+                const v = Number(p.value);
+                const from = (p.from_unit || '').toLowerCase();
+                const to = (p.to_unit || '').toLowerCase();
+                let result;
+                if (['celsius','fahrenheit'].includes(from) && ['celsius','fahrenheit'].includes(to)) {
+                    result = tempConv(v, from, to);
+                } else if (toBase[from] && toBase[to]) {
+                    result = v / toBase[from] * toBase[to];
                 }
-            }));
-            dc.send(JSON.stringify(buildResponseCreate()));
+                sendResult(callId, result != null ? `${v} ${from} = ${Math.round(result * 10000) / 10000} ${to}` : `Cannot convert ${from} to ${to}`);
+            } catch(e) {
+                sendResult(callId, `Error: ${e.message}`);
+            }
+        }
+
+        function execGetRandomNumber(callId, argsStr) {
+            try {
+                const p = JSON.parse(argsStr || '{}');
+                const min = p.min != null ? Number(p.min) : 1;
+                const max = p.max != null ? Number(p.max) : 100;
+                const result = Math.floor(Math.random() * (max - min + 1)) + min;
+                sendResult(callId, `Random number between ${min} and ${max}: ${result}`);
+            } catch(e) {
+                sendResult(callId, `Error: ${e.message}`);
+            }
+        }
+
+        function execGetUserLocation(callId, argsStr) {
+            if (!navigator.geolocation) {
+                sendResult(callId, 'Geolocation not available in this browser.');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => sendResult(callId, `Lat: ${pos.coords.latitude.toFixed(4)}, Lng: ${pos.coords.longitude.toFixed(4)}, Accuracy: ${pos.coords.accuracy}m`),
+                (err) => sendResult(callId, `Location unavailable: ${err.message}`),
+                { timeout: 10000 }
+            );
+        }
+
+        function execRollDice(callId, argsStr) {
+            try {
+                const p = JSON.parse(argsStr || '{}');
+                const count = Math.max(1, Math.min(100, p.count || 1));
+                const sides = Math.max(2, Math.min(999, p.sides || 6));
+                const rolls = [];
+                let total = 0;
+                for (let i = 0; i < count; i++) {
+                    const r = Math.floor(Math.random() * sides) + 1;
+                    rolls.push(r);
+                    total += r;
+                }
+                const detail = count <= 10 ? ` [${rolls.join(', ')}]` : '';
+                sendResult(callId, `${count}d${sides}: ${total}${detail}`);
+            } catch(e) {
+                sendResult(callId, `Error: ${e.message}`);
+            }
         }
 
         sendTextBtn.addEventListener('click', sendTextMessage);
@@ -750,10 +842,7 @@
                                 const fc = currentFunctionCallNodes[msg.call_id];
                                 fc.name = msg.name;
                                 appendMessage("function_call", `🔧 ${msg.name}\n📋 ${fc.args || '{}'}`);
-                                // Auto-execute get_current_time
-                                if (msg.name === 'get_current_time') {
-                                    execGetCurrentTime(msg.call_id, fc.args);
-                                }
+                                execTool(msg.name, msg.call_id, fc.args);
                             }
                             break;
                     }

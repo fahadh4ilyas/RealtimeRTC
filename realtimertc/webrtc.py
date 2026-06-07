@@ -88,6 +88,99 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                             }
                         }
                     }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "calculate",
+                        "description": "Evaluate a mathematical expression and return the result.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "expression": {
+                                    "type": "string",
+                                    "description": "Mathematical expression to evaluate, e.g. '2 + 3 * 4' or 'Math.sqrt(144)'.",
+                                }
+                            },
+                            "required": ["expression"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "convert_units",
+                        "description": "Convert a value between units (length, weight, temperature, etc.).",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "value": {
+                                    "type": "number",
+                                    "description": "The numeric value to convert.",
+                                },
+                                "from_unit": {
+                                    "type": "string",
+                                    "description": "Source unit, e.g. 'km', 'miles', 'celsius', 'fahrenheit', 'kg', 'lbs', 'liters', 'gallons'.",
+                                },
+                                "to_unit": {
+                                    "type": "string",
+                                    "description": "Target unit, e.g. 'km', 'miles', 'celsius', 'fahrenheit', 'kg', 'lbs', 'liters', 'gallons'.",
+                                }
+                            },
+                            "required": ["value", "from_unit", "to_unit"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_random_number",
+                        "description": "Generate a random integer between min and max (inclusive).",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "min": {
+                                    "type": "integer",
+                                    "description": "Minimum value (inclusive). Default 1.",
+                                },
+                                "max": {
+                                    "type": "integer",
+                                    "description": "Maximum value (inclusive). Default 100.",
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_user_location",
+                        "description": "Get the user's current geographic location (requires permission). Returns latitude, longitude, and accuracy.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "roll_dice",
+                        "description": "Roll a number of dice with a given number of sides each.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "count": {
+                                    "type": "integer",
+                                    "description": "Number of dice to roll. Default 1.",
+                                },
+                                "sides": {
+                                    "type": "integer",
+                                    "description": "Number of sides per die. Default 6.",
+                                }
+                            }
+                        }
+                    }
                 }
             ],
         },

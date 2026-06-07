@@ -114,6 +114,21 @@ realtimertc/
 - **Multi-voice** — dynamic TTS voice switching
 - **History trimming** — keeps last 50 messages to prevent context overflow
 
+## Built-in Tools
+
+Client-side functions the AI can call. All execute in the browser — no API keys needed.
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `get_current_time` | Current date and time | `timezone` (optional, e.g. `+0900`) |
+| `calculate` | Evaluate a math expression | `expression` (e.g. `2 + 3 * 4`) |
+| `convert_units` | Convert between units | `value`, `from_unit`, `to_unit` |
+| `get_random_number` | Random integer | `min` (default 1), `max` (default 100) |
+| `get_user_location` | Browser geolocation | none (requires permission) |
+| `roll_dice` | Roll N dice with M sides | `count` (default 1), `sides` (default 6) |
+
+Supported units: `km`/`miles`/`m`/`cm`/`mm`, `kg`/`lbs`/`g`, `liters`/`gallons`/`ml`, `celsius`/`fahrenheit`.
+
 ## Requirements
 
 - Python 3.11+
