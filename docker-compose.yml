@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  realtimertc:
+    build: .
+    image: realtimertc:latest
+    container_name: realtimertc
+    ports:
+      - "8081:8081"
+    environment:
+      # ── vLLM ──────────────────────────────────────────────────
+      - VLLM_BASE_URL=http://host.docker.internal:5000/v1
+      # ── TTS ───────────────────────────────────────────────────
+      - TTS_BASE_URL=http://host.docker.internal:5000/v1
+      # ── Whisper ───────────────────────────────────────────────
+      - WHISPER_MODEL=small
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE=auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

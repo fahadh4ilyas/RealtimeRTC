@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local AI Realtime Client</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        details[open] summary ~ * { animation: sweep .25s ease-in-out; }
+        @keyframes sweep {
+            0%    {opacity: 0; transform: translateY(-5px)}
+            100%  {opacity: 1; transform: translateY(0)}
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans antialiased">
+
+    <!-- Security Warning Banner (Hidden by default) -->
+    <div id="securityWarning" class="hidden bg-red-600 text-white text-sm font-semibold p-3 text-center shadow-md z-50">
+        ⚠️ Microphone access blocked! You are using an insecure network IP (HTTP). Please use localhost, HTTPS, or enable "Insecure origins treated as secure" in chrome://flags.
+    </div>
+
+    <!-- Hidden Audio Player (Still active for WebRTC) -->
+    <div class="hidden">
+        <audio id="audioPlayer" autoplay></audio>
+    </div>
+
+    <!-- Top Navigation / Connection Bar -->
+    <header class="bg-white border-b border-gray-200 shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center justify-between z-10">
+        <div class="flex items-center gap-3">
+            <div id="statusDot" class="w-3 h-3 rounded-full bg-red-500 transition-colors"></div>
+            <h1 class="font-bold text-lg text-gray-700">Realtime AI</h1>
+            <div id="speechIndicator" class="hidden flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                <span id="speechLabel">Listening</span>
+            </div>
+            <div id="processingIndicator" class="hidden flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>Processing</span>
+            </div>
+        </div>
+        
+        <div class="flex w-full sm:w-auto items-center gap-2">
+            <input 
+                type="text" 
+                id="serverUrl" 
+                class="flex-1 sm:w-80 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Server URL"
+            >
+            <button 
+                id="connectBtn" 
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm"
+            >
+                Connect
+            </button>
+            <button 
+                id="disconnectBtn" 
+                class="px-4 py-2 bg-red-100 text-red-600 hover:bg-red-200 text-sm font-semibold rounded-md transition-colors hidden"
+            >
+                Disconnect
+            </button>
+        </div>
+    </header>
+
+    <!-- Session Settings Drawer -->
+    <div class="bg-white border-b border-gray-200 px-4 py-3 z-0">
+        <details class="group max-w-4xl mx-auto">
+            <summary class="text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-1">
+                <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                Session Settings & Configuration
+            </summary>
+            
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 border border-gray-100 bg-gray-50 rounded-lg p-4 shadow-inner">
+                
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Additional System Instructions</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="instructionsInput" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md" placeholder="e.g., 'Speak like a pirate' or 'Respond in Spanish'">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Model</label>
+                    <select id="modelInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                        </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Voice</label>
+                    <select id="voiceInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                        </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Turn Detection Mode</label>
+                    <select id="vadModeSelect" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                        <option value="server_vad">Server VAD (Auto-Listen)</option>
+                        <option value="null">Manual (Push-to-Talk)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Reasoning Effort</label>
+                    <select id="reasoningEffortSelect" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                        <option value="none" selected>None (Standard Generation)</option>
+                        <option value="minimum">Minimum</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="xhigh">Extra High</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">VAD Threshold</label>
+                        <input type="number" id="vadThreshold" value="0.5" step="0.1" min="0.1" max="1.0" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Silence Limit (ms)</label>
+                        <input type="number" id="vadSilence" value="500" step="100" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Prefix Padding (ms)</label>
+                        <input type="number" id="vadPrefixPadding" value="480" step="10" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
+                    </div>
+                </div>
+
+                <div class="md:col-span-2 mt-2">
+                    <button id="updateSessionBtn" class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors shadow-sm">
+                        Apply Settings to Session
+                    </button>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- Main Interface -->
+    <main class="flex-1 overflow-hidden flex flex-col max-w-4xl w-full mx-auto p-4 gap-4">
+        
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex items-center justify-end">
+            <!-- Manual Push-To-Talk Button -->
+            <button id="pttBtn" class="hidden px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none w-full sm:w-auto text-center" title="Hold to talk, release to send">
+                🎤 Push to Talk
+            </button>
+        </div>
+
+        <div id="chatHistory" class="flex-1 overflow-y-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-5">
+            <div class="text-center text-gray-400 text-sm mt-10">
+                Connect and start speaking to interact with the AI.
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const serverUrlInput = document.getElementById('serverUrl');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusDot = document.getElementById('statusDot');
+        const chatHistory = document.getElementById('chatHistory');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const securityWarning = document.getElementById('securityWarning');
+        const speechIndicator = document.getElementById('speechIndicator');
+        const speechLabel = document.getElementById('speechLabel');
+        const processingIndicator = document.getElementById('processingIndicator');
+        
+        const instructionsInput = document.getElementById('instructionsInput');
+        const modelInput = document.getElementById('modelInput');
+        const voiceInput = document.getElementById('voiceInput');
+        const reasoningEffortSelect = document.getElementById('reasoningEffortSelect');
+        const vadModeSelect = document.getElementById('vadModeSelect');
+        const vadThreshold = document.getElementById('vadThreshold');
+        const vadSilence = document.getElementById('vadSilence');
+        const vadPrefixPadding = document.getElementById('vadPrefixPadding');
+        const updateSessionBtn = document.getElementById('updateSessionBtn');
+        const pttBtn = document.getElementById('pttBtn');
+
+        serverUrlInput.value = `${window.location.protocol}//${window.location.host}/v1/realtime/calls`;
+
+        const availableModels = '$AVAILABLE_MODELS_JSON$';
+        const availableVoices = '$AVAILABLE_VOICES_JSON$';
+        
+        availableModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            modelInput.appendChild(option);
+        });
+
+        availableVoices.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice;
+            option.textContent = voice;
+            voiceInput.appendChild(option);
+        });
+
+        let pc = null;
+        let dc = null;
+        let localStream = null;
+        let currentAiMessageNodes = null;
+        let currentFunctionCallNodes = {};
+        let connectionTimeout = null;
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            securityWarning.classList.remove('hidden');
+            connectBtn.disabled = true;
+            connectBtn.classList.replace('bg-blue-600', 'bg-gray-400');
+            connectBtn.classList.replace('hover:bg-blue-700', 'hover:bg-gray-400');
+            appendMessage("system", "ERROR: Browser security blocked WebRTC. Use HTTPS or Localhost.", true);
+        }
+
+        function updateStatus(status) {
+            if (status === 'connected') {
+                statusDot.classList.replace('bg-red-500', 'bg-green-500');
+                statusDot.classList.replace('bg-yellow-500', 'bg-green-500');
+                connectBtn.classList.add('hidden');
+                disconnectBtn.classList.remove('hidden');
+            } else if (status === 'connecting') {
+                statusDot.classList.replace('bg-red-500', 'bg-yellow-500');
+                statusDot.classList.replace('bg-green-500', 'bg-yellow-500');
+
+                connectBtn.disabled = true;
+                connectBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                statusDot.classList.replace('bg-green-500', 'bg-red-500');
+                statusDot.classList.replace('bg-yellow-500', 'bg-red-500');
+                connectBtn.classList.remove('hidden');
+                disconnectBtn.classList.add('hidden');
+
+                connectBtn.disabled = false;
+                connectBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function appendMessage(role, text = "", isError = false, itemId = null) {
+            if (chatHistory.children.length === 1 && chatHistory.children[0].classList.contains('text-center')) {
+                chatHistory.innerHTML = '';
+            }
+
+            const wrapper = document.createElement('div');
+
+            if (role === 'system') {
+                wrapper.className = `flex w-full justify-center my-2`;
+                wrapper.innerHTML = `<div class="text-xs ${isError ? 'text-red-500 bg-red-50 border-red-200' : 'text-gray-400 bg-gray-50 border-gray-100'} px-3 py-1 rounded-full border shadow-sm">${text}</div>`;
+                chatHistory.appendChild(wrapper);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                return null;
+            }
+
+            if (role === 'function_call') {
+                wrapper.className = `flex w-full justify-start my-1`;
+                const bubble = document.createElement('div');
+                bubble.className = `max-w-[85%] px-4 py-2 rounded-xl text-xs bg-purple-50 text-purple-800 border border-purple-200 shadow-sm font-mono`;
+                const textContainer = document.createElement('div');
+                textContainer.className = "whitespace-pre-wrap leading-relaxed";
+                textContainer.innerText = `🔧 ${text}`;
+                bubble.appendChild(textContainer);
+                wrapper.appendChild(bubble);
+                if (itemId) wrapper.dataset.itemId = itemId;
+                chatHistory.appendChild(wrapper);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                return { bubble, textContainer };
+            }
+
+            wrapper.className = `flex w-full ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-[85%] px-4 py-3 rounded-2xl text-sm ${role === 'user' ? 'bg-blue-600 text-white rounded-br-none shadow-sm' : 'bg-gray-50 text-gray-800 rounded-bl-none border border-gray-200 shadow-sm'}`;
+
+            let nodes = { bubble, wrapper };
+            if (role === 'ai') {
+                const reasoningDetails = document.createElement('details');
+                reasoningDetails.className = "mb-3 hidden";
+                const summary = document.createElement('summary');
+                summary.className = "cursor-pointer select-none text-xs font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-1";
+                summary.innerHTML = `Thinking...`;
+
+                const reasoningText = document.createElement('div');
+                reasoningText.className = "mt-2 p-3 bg-white border border-gray-100 rounded-lg text-gray-600 whitespace-pre-wrap font-mono text-[11px] leading-relaxed shadow-inner max-h-60 overflow-y-auto";
+
+                reasoningDetails.appendChild(summary);
+                reasoningDetails.appendChild(reasoningText);
+
+                const textContainer = document.createElement('div');
+                textContainer.className = "whitespace-pre-wrap leading-relaxed text-sm";
+                textContainer.innerText = text;
+
+                bubble.appendChild(reasoningDetails);
+                bubble.appendChild(textContainer);
+
+                nodes.reasoningDetails = reasoningDetails;
+                nodes.reasoningContainer = reasoningText;
+                nodes.textContainer = textContainer;
+            } else {
+                const textContainer = document.createElement('div');
+                textContainer.className = "whitespace-pre-wrap leading-relaxed";
+                textContainer.innerText = text;
+                bubble.appendChild(textContainer);
+                nodes.textContainer = textContainer;
+            }
+
+            wrapper.appendChild(bubble);
+            if (itemId) wrapper.dataset.itemId = itemId;
+            chatHistory.appendChild(wrapper);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            return nodes;
+        }
+
+        updateSessionBtn.addEventListener('click', () => {
+            if (!dc || dc.readyState !== 'open') {
+                alert("Please connect to the server first.");
+                return;
+            }
+            const mode = vadModeSelect.value;
+            const turn_detection = mode === "null" ? null : {
+                type: "server_vad",
+                threshold: parseFloat(vadThreshold.value),
+                silence_duration_ms: parseInt(vadSilence.value),
+                prefix_padding_ms: parseInt(vadPrefixPadding.value)
+            };
+            const event = { 
+                type: "session.update", 
+                session: { 
+                    instructions: instructionsInput.value.trim(), 
+                    model: modelInput.value.trim(),
+                    audio: {
+                        input: {
+                            turn_detection: turn_detection
+                        },
+                        output: {
+                            voice: voiceInput.value.trim()
+                        }
+                    },
+                    reasoning: {
+                        effort: reasoningEffortSelect.value
+                    }
+                } 
+            };
+            dc.send(JSON.stringify(event));
+            
+            if (turn_detection === null) {
+                pttBtn.classList.remove('hidden');
+                appendMessage("system", `VAD Disabled. Switched to Push-To-Talk.`);
+            } else {
+                pttBtn.classList.add('hidden');
+                appendMessage("system", `Session Updated (VAD Enabled).`);
+            }
+        });
+
+        const startRecording = (e) => {
+            e.preventDefault();
+            
+            // Ignore right-clicks or middle-clicks on desktop
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+            if (dc && dc.readyState === 'open') {
+                dc.send(JSON.stringify({"type": "input_audio_buffer.clear"}));
+                dc.send(JSON.stringify({"type": "output_audio_buffer.clear"}));
+                dc.send(JSON.stringify({"type": "response.cancel"}));
+                pttBtn.classList.replace('bg-amber-500', 'bg-red-500');
+            }
+        };
+
+        const stopRecording = (e) => {
+            e.preventDefault();
+            
+            // Only trigger the send logic if the button was actually in the recording state (red)
+            if (pttBtn.classList.contains('bg-red-500') && dc && dc.readyState === 'open') {
+                dc.send(JSON.stringify({"type": "input_audio_buffer.commit"}));
+                dc.send(JSON.stringify({
+                    "type": "response.create", 
+                    "response": {
+                        "instructions": instructionsInput.value.trim(), 
+                        "model": modelInput.value.trim(), 
+                        "reasoning": {
+                            "effort": reasoningEffortSelect.value
+                        },
+                        "audio": {
+                            "output": {
+                                "voice": voiceInput.value.trim()
+                            }
+                        }
+                    }
+                }));
+                pttBtn.classList.replace('bg-red-500', 'bg-amber-500');
+            }
+        };
+
+        // These 4 listeners handle Mouse, Touch, and Stylus automatically.
+        pttBtn.addEventListener('pointerdown', startRecording);
+        pttBtn.addEventListener('pointerup', stopRecording);
+        pttBtn.addEventListener('pointerout', stopRecording); // Failsafe: Triggers if pointer slides off the button
+        pttBtn.addEventListener('pointercancel', stopRecording); // Failsafe: Triggers if the OS interrupts the touch (e.g., a phone call)
+
+        window.addEventListener('keydown', (e) => {
+            // 1. Ignore if the user is typing in a text box or interacting with a dropdown
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+            
+            // 2. Check if it's the Spacebar, ignore OS key-repeat spam, and ensure PTT mode is active
+            if (e.code === 'Space' && !e.repeat && !pttBtn.classList.contains('hidden')) {
+                e.preventDefault(); // Prevent the page from scrolling down
+                startRecording(e);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+
+            if (e.code === 'Space' && !pttBtn.classList.contains('hidden')) {
+                e.preventDefault();
+                stopRecording(e);
+            }
+        });
+
+        // 3. Absolute Failsafe: If the user holds space, but clicks away to another window, 
+        // the browser will never fire the 'keyup' event. This ensures the AI isn't stuck listening forever.
+        window.addEventListener('blur', (e) => {
+            if (pttBtn.classList.contains('bg-red-500')) {
+                stopRecording(e);
+            }
+        });
+
+        async function connect() {
+            if (connectBtn.disabled) return;
+            try {
+                updateStatus('connecting');
+
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("Browser blocked microphone. Use HTTPS or Localhost.");
+                }
+
+                connectionTimeout = setTimeout(() => {
+                    alert("Connection timed out after 60 seconds. The server might be unreachable or your firewall is blocking WebRTC traffic.");
+                    disconnect();
+                }, 300000);
+
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const configuration = {
+                    iceServers: [
+                        { urls: "stun:stun.l.google.com:19302" },
+                        { urls: "stun:stun1.l.google.com:19302" },
+                        {
+                            urls: [
+                                "turn:openrelay.metered.ca:80",
+                                "turn:openrelay.metered.ca:80?transport=tcp",
+                                "turns:openrelay.metered.ca:443?transport=tcp"
+                            ],
+                            username: "openrelayproject",
+                            credential: "openrelayproject"
+                        }
+                    ]
+                };
+                pc = new RTCPeerConnection(configuration);
+                pc.addTrack(localStream.getTracks()[0], localStream);
+
+                pc.ontrack = (event) => {
+                    if (event.streams && event.streams[0]) {
+                        audioPlayer.srcObject = event.streams[0];
+                        audioPlayer.play();
+                    }
+                };
+
+                dc = pc.createDataChannel("oai-events");
+                dc.onopen = () => {
+                    clearTimeout(connectionTimeout);
+                    updateStatus('connected');
+                    updateSessionBtn.click();
+                };
+                dc.onclose = () => disconnect();
+
+                dc.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    switch (msg.type) {
+                        case "error":
+                            const errorMessage = msg.error && msg.error.message ? msg.error.message : "An unknown server error occurred.";
+                            appendMessage("system", `Server Error: ${errorMessage}`, true);
+                            if (currentAiMessageNodes) currentAiMessageNodes = null;
+                            currentFunctionCallNodes = {};
+                            speechIndicator.classList.add('hidden');
+                            processingIndicator.classList.add('hidden');
+                            break;
+
+                        // --- Session events ---
+                        case "session.created":
+                            appendMessage("system", "Session established.");
+                            break;
+                        case "session.updated":
+                            appendMessage("system", "Session configuration updated.");
+                            break;
+
+                        // --- Speech detection (VAD) ---
+                        case "input_audio_buffer.speech_started":
+                            speechIndicator.classList.remove('hidden');
+                            processingIndicator.classList.add('hidden');
+                            break;
+                        case "input_audio_buffer.speech_stopped":
+                            speechIndicator.classList.add('hidden');
+                            processingIndicator.classList.remove('hidden');
+                            break;
+
+                        // --- Audio buffer events ---
+                        case "input_audio_buffer.committed":
+                        case "input_audio_buffer.cleared":
+                        case "output_audio_buffer.cleared":
+                            // Acknowledged — no visible action needed
+                            break;
+
+                        // --- Conversation item events ---
+                        case "conversation.item.created":
+                            // Item created on server; no visible action needed
+                            break;
+                        case "conversation.item.added":
+                            if (msg.item && msg.item.role === "user") {
+                                const itemId = msg.item.id;
+                                if (msg.item.content && msg.item.content[0]) {
+                                    if (msg.item.content[0].type === "input_audio") {
+                                        appendMessage("user", `🎤 ${msg.item.content[0].transcript}`, false, itemId);
+                                    } else if (msg.item.content[0].type === "input_text") {
+                                        appendMessage("user", msg.item.content[0].text, false, itemId);
+                                    }
+                                }
+                            }
+                            break;
+                        case "conversation.item.done":
+                            // Item finalized — if it's an assistant item, clean up tracking
+                            if (msg.item && msg.item.role === "assistant") {
+                                currentAiMessageNodes = null;
+                                currentFunctionCallNodes = {};
+                                processingIndicator.classList.add('hidden');
+                            }
+                            break;
+                        case "conversation.item.input_audio_transcription.completed":
+                            // Transcription completed (transcript shown via conversation.item.added)
+                            processingIndicator.classList.add('hidden');
+                            break;
+                        case "conversation.item.input_audio_transcription.failed":
+                            processingIndicator.classList.add('hidden');
+                            const transError = msg.error && msg.error.message ? msg.error.message : "Transcription failed.";
+                            appendMessage("system", transError, true);
+                            break;
+
+                        // --- Response lifecycle ---
+                        case "response.created":
+                            currentAiMessageNodes = appendMessage("ai", "");
+                            currentFunctionCallNodes = {};
+                            break;
+                        case "response.done":
+                            // Response finished — keep nodes for final .done events
+                            if (msg.response && msg.response.status === "cancelled") {
+                                currentAiMessageNodes = null;
+                                currentFunctionCallNodes = {};
+                                processingIndicator.classList.add('hidden');
+                            }
+                            break;
+
+                        // --- Reasoning streaming ---
+                        case "response.output_reasoning.delta":
+                            if (!currentAiMessageNodes) currentAiMessageNodes = appendMessage("ai", "");
+                            currentAiMessageNodes.reasoningDetails.classList.remove('hidden');
+                            currentAiMessageNodes.reasoningContainer.textContent += msg.delta;
+                            break;
+                        case "response.output_reasoning.done":
+                            if (currentAiMessageNodes && currentAiMessageNodes.reasoningDetails) {
+                                const summary = currentAiMessageNodes.reasoningDetails.querySelector('summary');
+                                if (summary) summary.innerHTML = `Thought for ${msg.content ? msg.content.length : '...'} chars ▼`;
+                            }
+                            break;
+
+                        // --- Text / Transcript streaming ---
+                        case "response.output_audio_transcript.delta":
+                        case "response.output_text.delta":
+                            if (!currentAiMessageNodes) currentAiMessageNodes = appendMessage("ai", "");
+                            currentAiMessageNodes.textContainer.textContent += msg.delta;
+                            chatHistory.scrollTop = chatHistory.scrollHeight;
+                            break;
+                        case "response.output_audio_transcript.done":
+                        case "response.output_text.done":
+                            // Transcript/text finalized
+                            break;
+
+                        // --- Function call streaming ---
+                        case "response.function_call_arguments.delta":
+                            if (!currentFunctionCallNodes[msg.call_id]) {
+                                currentFunctionCallNodes[msg.call_id] = appendMessage("function_call", `${msg.call_id}: ...`);
+                            }
+                            if (currentFunctionCallNodes[msg.call_id]) {
+                                const current = currentFunctionCallNodes[msg.call_id].textContainer.innerText;
+                                currentFunctionCallNodes[msg.call_id].textContainer.innerText = current.replace('...', '') + msg.delta;
+                            }
+                            break;
+                        case "response.function_call_arguments.done":
+                            if (currentFunctionCallNodes[msg.call_id]) {
+                                currentFunctionCallNodes[msg.call_id].textContainer.innerText = `🔧 ${msg.name || 'function'}(${msg.arguments || ''})`;
+                            }
+                            break;
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                await new Promise((resolve) => {
+                    if (pc.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        const checkState = () => {
+                            if (pc.iceGatheringState === 'complete') {
+                                pc.removeEventListener('icegatheringstatechange', checkState);
+                                resolve();
+                            }
+                        };
+                        pc.addEventListener('icegatheringstatechange', checkState);
+                        
+                        // Failsafe timeout so it doesn't hang forever if STUN is blocked by a strict network
+                        setTimeout(() => {
+                            pc.removeEventListener('icegatheringstatechange', checkState);
+                            resolve();
+                        }, 30000); 
+                    }
+                });
+
+                const response = await fetch(serverUrlInput.value, {
+                    method: "POST",
+                    body: pc.localDescription.sdp,
+                    headers: { "Content-Type": "application/sdp" }
+                });
+
+                if (!response.ok) throw new Error(`Server error`);
+                await pc.setRemoteDescription({ type: "answer", sdp: await response.text() });
+            } catch (err) {
+                alert("Connection failed: " + err.message);
+                disconnect();
+            }
+        }
+
+        function disconnect() {
+            if (dc) { dc.close(); dc = null; }
+            if (pc) { pc.close(); pc = null; }
+            if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+            updateStatus('disconnected');
+
+            // Clear the chat box and restore the default placeholder message
+            chatHistory.innerHTML = `
+                <div class="text-center text-gray-400 text-sm mt-10">
+                    Connect and start speaking to interact with the AI.
+                </div>
+            `;
+
+            // hide the PTT button in case it was left visible
+            pttBtn.classList.add('hidden');
+
+            // Reset speech/processing indicators
+            speechIndicator.classList.add('hidden');
+            processingIndicator.classList.add('hidden');
+
+            // Reset any lingering active generation state
+            currentAiMessageNodes = null;
+            currentFunctionCallNodes = {};
+        }
+
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+    </script>
+</body>
+</html>

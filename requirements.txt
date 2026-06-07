@@ -1,0 +1,7 @@
+aiortc
+aiohttp
+aiohttp-cors
+av
+numpy
+faster-whisper
+silero-vad-lite
