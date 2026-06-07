@@ -27,7 +27,7 @@ async def _background_worker(app):
     task = asyncio.create_task(background_polling_task(app))
     task.add_done_callback(
         lambda t: logging.error("Background poller crashed: %s", t.exception())
-        if t.exception() else None)
+        if not t.cancelled() and t.exception() else None)
     logging.info("Background cache poller started.")
     yield
     task.cancel()

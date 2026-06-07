@@ -72,7 +72,24 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
             },
             "instructions": config.DEFAULT_SYSTEM_PROMPT,
             "reasoning": {"effort": "none"},
-            "tools": [],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_current_time",
+                        "description": "Get current full time, day, and date. Pass a timezone offset (e.g. +0700, -0500) to get the time for that zone. Omit the parameter to use the user's local time.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "timezone": {
+                                    "type": "string",
+                                    "description": "Timezone offset like +0700 or -0500. Omit to use the user's local timezone.",
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
         },
         "history": [{"role": "system", "content": config.DEFAULT_SYSTEM_PROMPT,
                       "id": generate_id("item")}],

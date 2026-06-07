@@ -42,6 +42,9 @@
             <div class="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p class="text-gray-700 font-semibold text-sm">Connecting…</p>
             <p class="text-gray-400 text-xs">Gathering ICE candidates, this may take a few seconds.</p>
+            <button id="cancelConnectBtn" class="mt-1 px-4 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors">
+                Cancel
+            </button>
         </div>
     </div>
 
@@ -146,6 +149,13 @@
                     </div>
                 </div>
 
+                <div class="flex items-end pb-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="audioOutputCheckbox" checked class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                        <span class="text-xs font-semibold text-gray-600">Audio Output</span>
+                    </label>
+                </div>
+
                 <div class="md:col-span-2 mt-2">
                     <button id="updateSessionBtn" class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors shadow-sm">
                         Apply Settings to Session
@@ -215,6 +225,8 @@
         const pttBtn = document.getElementById('pttBtn');
         const textInput = document.getElementById('textInput');
         const sendTextBtn = document.getElementById('sendTextBtn');
+        const cancelConnectBtn = document.getElementById('cancelConnectBtn');
+        const audioOutputCheckbox = document.getElementById('audioOutputCheckbox');
 
         serverUrlInput.value = `${window.location.protocol}//${window.location.host}/v1/realtime/calls`;
 
@@ -301,10 +313,24 @@
                 bubble.className = `max-w-[85%] px-4 py-2 rounded-xl text-xs bg-purple-50 text-purple-800 border border-purple-200 shadow-sm font-mono`;
                 const textContainer = document.createElement('div');
                 textContainer.className = "whitespace-pre-wrap leading-relaxed";
-                textContainer.innerText = `🔧 ${text}`;
+                textContainer.innerText = `${text}`;
                 bubble.appendChild(textContainer);
                 wrapper.appendChild(bubble);
                 if (itemId) wrapper.dataset.itemId = itemId;
+                chatHistory.appendChild(wrapper);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                return { bubble, textContainer };
+            }
+
+            if (role === 'tool_result') {
+                wrapper.className = `flex w-full justify-end my-1`;
+                const bubble = document.createElement('div');
+                bubble.className = `max-w-[85%] px-4 py-2 rounded-xl text-xs bg-green-50 text-green-800 border border-green-200 shadow-sm font-mono`;
+                const textContainer = document.createElement('div');
+                textContainer.className = "whitespace-pre-wrap leading-relaxed";
+                textContainer.innerText = text;
+                bubble.appendChild(textContainer);
+                wrapper.appendChild(bubble);
                 chatHistory.appendChild(wrapper);
                 chatHistory.scrollTop = chatHistory.scrollHeight;
                 return { bubble, textContainer };
@@ -365,11 +391,12 @@
                 silence_duration_ms: parseInt(vadSilence.value),
                 prefix_padding_ms: parseInt(vadPrefixPadding.value)
             };
-            const event = { 
-                type: "session.update", 
-                session: { 
-                    instructions: instructionsInput.value.trim(), 
+            const event = {
+                type: "session.update",
+                session: {
+                    instructions: instructionsInput.value.trim(),
                     model: modelInput.value.trim(),
+                    output_modalities: audioOutputCheckbox.checked ? ["audio"] : ["text"],
                     audio: {
                         input: {
                             turn_detection: turn_detection
@@ -414,21 +441,7 @@
             // Only trigger the send logic if the button was actually in the recording state (red)
             if (pttBtn.classList.contains('bg-red-500') && dc && dc.readyState === 'open') {
                 dc.send(JSON.stringify({"type": "input_audio_buffer.commit"}));
-                dc.send(JSON.stringify({
-                    "type": "response.create", 
-                    "response": {
-                        "instructions": instructionsInput.value.trim(), 
-                        "model": modelInput.value.trim(), 
-                        "reasoning": {
-                            "effort": reasoningEffortSelect.value
-                        },
-                        "audio": {
-                            "output": {
-                                "voice": voiceInput.value.trim()
-                            }
-                        }
-                    }
-                }));
+                dc.send(JSON.stringify(buildResponseCreate()));
                 pttBtn.classList.replace('bg-red-500', 'bg-amber-500');
             }
         };
@@ -468,6 +481,19 @@
         });
 
         // --- Text input ---
+        function buildResponseCreate() {
+            return {
+                type: "response.create",
+                response: {
+                    instructions: instructionsInput.value.trim(),
+                    model: modelInput.value.trim(),
+                    output_modalities: audioOutputCheckbox.checked ? ["audio"] : ["text"],
+                    reasoning: { effort: reasoningEffortSelect.value },
+                    audio: { output: { voice: voiceInput.value.trim() } }
+                }
+            };
+        }
+
         function sendTextMessage() {
             const text = textInput.value.trim();
             if (!text || !dc || dc.readyState !== 'open') return;
@@ -482,11 +508,64 @@
                     content: [{ type: "input_text", text: text }]
                 }
             }));
-            dc.send(JSON.stringify({ type: "response.create" }));
+            dc.send(JSON.stringify(buildResponseCreate()));
             textInput.value = '';
         }
 
+        function execGetCurrentTime(callId, argsStr) {
+            let tzStr = '';
+            try { const p = JSON.parse(argsStr || '{}'); tzStr = p.timezone || ''; } catch(e) {}
+            const now = new Date();
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            let hh, mm, ss, day, mon, date, year;
+            if (tzStr) {
+                // Parse timezone offset (e.g. "+0900" or "-0500")
+                const sign = tzStr[0] === '-' ? -1 : 1;
+                const offH = parseInt(tzStr.slice(1, 3)) || 0;
+                const offM = parseInt(tzStr.slice(3, 5)) || 0;
+                const offsetMs = sign * (offH * 60 + offM) * 60000;
+                const target = new Date(now.getTime() + offsetMs);
+                day = days[target.getUTCDay()];
+                mon = months[target.getUTCMonth()];
+                date = target.getUTCDate();
+                year = target.getUTCFullYear();
+                hh = String(target.getUTCHours()).padStart(2, '0');
+                mm = String(target.getUTCMinutes()).padStart(2, '0');
+                ss = String(target.getUTCSeconds()).padStart(2, '0');
+            } else {
+                // Use local time
+                day = days[now.getDay()];
+                mon = months[now.getMonth()];
+                date = now.getDate();
+                year = now.getFullYear();
+                hh = String(now.getHours()).padStart(2, '0');
+                mm = String(now.getMinutes()).padStart(2, '0');
+                ss = String(now.getSeconds()).padStart(2, '0');
+                const localOffset = -now.getTimezoneOffset();
+                const sign = localOffset >= 0 ? '+' : '-';
+                const absOff = Math.abs(localOffset);
+                const offH = String(Math.floor(absOff / 60)).padStart(2, '0');
+                const offM = String(absOff % 60).padStart(2, '0');
+                tzStr = `${sign}${offH}${offM}`;
+            }
+
+            const timeStr = `${day}, ${mon} ${date} ${year} ${hh}:${mm}:${ss}${tzStr}`;
+
+            dc.send(JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                    type: "function_call_output",
+                    call_id: callId,
+                    output: timeStr
+                }
+            }));
+            dc.send(JSON.stringify(buildResponseCreate()));
+        }
+
         sendTextBtn.addEventListener('click', sendTextMessage);
+        cancelConnectBtn.addEventListener('click', disconnect);
         textInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -594,6 +673,10 @@
                                         appendMessage("user", msg.item.content[0].text, false, itemId);
                                     }
                                 }
+                            } else if (msg.item && msg.item.role === "tool") {
+                                appendMessage("tool_result", `🛠️ ${msg.item.content}`);
+                            } else if (msg.item && msg.item.type === "function_call_output") {
+                                appendMessage("tool_result", `🛠️ ${msg.item.output}`);
                             }
                             break;
                         case "conversation.item.done":
@@ -616,7 +699,6 @@
 
                         // --- Response lifecycle ---
                         case "response.created":
-                            currentAiMessageNodes = appendMessage("ai", "");
                             currentFunctionCallNodes = {};
                             break;
                         case "response.done":
@@ -656,16 +738,22 @@
                         // --- Function call streaming ---
                         case "response.function_call_arguments.delta":
                             if (!currentFunctionCallNodes[msg.call_id]) {
-                                currentFunctionCallNodes[msg.call_id] = appendMessage("function_call", `${msg.call_id}: ...`);
+                                currentFunctionCallNodes[msg.call_id] = {
+                                    name: '',
+                                    args: ''
+                                };
                             }
-                            if (currentFunctionCallNodes[msg.call_id]) {
-                                const current = currentFunctionCallNodes[msg.call_id].textContainer.innerText;
-                                currentFunctionCallNodes[msg.call_id].textContainer.innerText = current.replace('...', '') + msg.delta;
-                            }
+                            currentFunctionCallNodes[msg.call_id].args += msg.delta;
                             break;
                         case "response.function_call_arguments.done":
                             if (currentFunctionCallNodes[msg.call_id]) {
-                                currentFunctionCallNodes[msg.call_id].textContainer.innerText = `🔧 ${msg.name || 'function'}(${msg.arguments || ''})`;
+                                const fc = currentFunctionCallNodes[msg.call_id];
+                                fc.name = msg.name;
+                                appendMessage("function_call", `🔧 ${msg.name}\n📋 ${fc.args || '{}'}`);
+                                // Auto-execute get_current_time
+                                if (msg.name === 'get_current_time') {
+                                    execGetCurrentTime(msg.call_id, fc.args);
+                                }
                             }
                             break;
                     }
