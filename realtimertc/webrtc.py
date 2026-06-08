@@ -77,7 +77,7 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                     "type": "function",
                     "function": {
                         "name": "get_current_time",
-                        "description": "Get current full time, day, and date. Pass a timezone offset (e.g. +0700, -0500) to get the time for that zone. Omit the parameter to use the user's local time.",
+                        "description": "Returns the current weekday, month, date, year, and time. For example: 'Mon, Jan 15 2025 14:30:00+0700'. Pass a timezone offset (e.g. +0700, -0500) to get the time for that zone. Omit to use the user's local timezone. Use this tool whenever the user asks about the current time, day, date, or any combination of these.",
                         "parameters": {
                             "type": "object",
                             "properties": {
@@ -442,11 +442,11 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                 resp_cfg["audio"]["output"].pop("voice", None)
 
                     async def _queued_response():
-                        # Only wait for audio commit if one is in flight (push-to-talk).
-                        # Text-only requests skip this.
                         sd = config.active_sessions[session_id]
-                        if sd.get("commit_audio_buffer") or sd.get("transcription_task"):
+                        # Wait for any in-flight audio commit to be consumed by the VAD loop
+                        if sd.get("commit_audio_buffer"):
                             await sd["commit_consumed_event"].wait()
+                        # Wait for transcription to finish (may be created by VAD loop above)
                         trans = sd.get("transcription_task")
                         if trans and not trans.done():
                             try:

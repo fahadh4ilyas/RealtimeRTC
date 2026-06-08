@@ -182,14 +182,14 @@
         </div>
 
         <!-- Text input bar -->
-        <div class="flex gap-2 items-center">
-            <input
-                type="text"
+        <div class="flex gap-2 items-end">
+            <textarea
                 id="textInput"
-                class="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+                rows="1"
+                class="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm resize-none"
                 placeholder="Type a message and press Enter…"
                 disabled
-            >
+            ></textarea>
             <button
                 id="sendTextBtn"
                 class="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
@@ -355,7 +355,7 @@
                 reasoningDetails.appendChild(reasoningText);
 
                 const textContainer = document.createElement('div');
-                textContainer.className = "whitespace-pre-wrap leading-relaxed text-sm";
+                textContainer.className = "whitespace-pre-wrap leading-relaxed text-sm break-words";
                 textContainer.innerText = text;
 
                 bubble.appendChild(reasoningDetails);
@@ -366,7 +366,7 @@
                 nodes.textContainer = textContainer;
             } else {
                 const textContainer = document.createElement('div');
-                textContainer.className = "whitespace-pre-wrap leading-relaxed";
+                textContainer.className = "whitespace-pre-wrap leading-relaxed break-words";
                 textContainer.innerText = text;
                 bubble.appendChild(textContainer);
                 nodes.textContainer = textContainer;
