@@ -69,7 +69,7 @@ SILERO_CHUNK_SIZE       = 512         # samples per VAD chunk (32 ms @ 16 kHz)
 SILERO_CHUNK_MS         = 32          # ms per VAD chunk
 INT16_TO_FLOAT          = 1.0 / 32768.0
 BYTES_PER_SAMPLE        = 2           # 16-bit mono
-PRE_SPEECH_BUFFER_CHUNKS = 15         # ~480 ms of look-back audio
+PRE_SPEECH_BUFFER_CHUNKS = 25         # ~800 ms of look-back audio
 SSE_PREFIX_LENGTH       = 6           # len("data: ")
 
 # ---------------------------------------------------------------------------

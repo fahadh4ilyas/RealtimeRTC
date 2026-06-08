@@ -63,8 +63,8 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                 "input": {
                     "turn_detection": {
                         "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 480,
+                        "threshold": 0.3,
+                        "prefix_padding_ms": 800,
                         "silence_duration_ms": 500,
                     }
                 },
