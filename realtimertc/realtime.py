@@ -253,6 +253,7 @@ async def trigger_ai_response(session_id: str,
             assistant_msg["content"] = full_ai_response
         if full_reasoning_response:
             assistant_msg["reasoning_content"] = full_reasoning_response
+            assistant_msg["reasoning"] = full_reasoning_response
         if tool_calls_buffer:
             assistant_msg["tool_calls"] = list(tool_calls_buffer.values())
             if channel_open(channel) and not is_cancelled:
