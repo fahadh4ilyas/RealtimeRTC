@@ -255,6 +255,7 @@
         let currentAiMessageNodes = null;
         let currentFunctionCallNodes = {};
         let connectionTimeout = null;
+        let iceMsgInterval, postIceInterval;
 
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             securityWarning.classList.remove('hidden');
@@ -672,14 +673,13 @@
             if (connectBtn.disabled) return;
             try {
                 updateStatus('connecting');
-                let iceMsgInterval, postIceInterval;
 
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     throw new Error("Browser blocked microphone. Use HTTPS or Localhost.");
                 }
 
                 connectionTimeout = setTimeout(() => {
-                    alert("Connection timed out after 60 seconds. The server might be unreachable or your firewall is blocking WebRTC traffic.");
+                    alert("Connection timed out after 5 minutes. The server might be unreachable or your firewall is blocking WebRTC traffic.");
                     disconnect();
                 }, 300000);
 
@@ -924,7 +924,9 @@
         }
 
         function disconnect() {
-            if (dc) { dc.close(); dc = null; }
+            clearInterval(iceMsgInterval);
+            clearInterval(postIceInterval);
+            if (dc) { dc.onclose = null; dc.close(); dc = null; }
             if (pc) { pc.close(); pc = null; }
             if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
             updateStatus('disconnected');
