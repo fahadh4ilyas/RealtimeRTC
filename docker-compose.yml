@@ -16,6 +16,7 @@ services:
       - WHISPER_MODEL=small
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE=auto
+      - WHISPER_INSTANCES=1
     deploy:
       resources:
         reservations:

@@ -29,8 +29,7 @@ from realtimertc.config import (
     TTS_WS_API,
     WEBRTC_SAMPLE_RATE,
     WHISPER_BEAM_SIZE,
-    whisper_model,
-    whisper_queue_lock,
+    whisper_pool,
 )
 from realtimertc.utils import channel_open, generate_id, trim_history
 
@@ -310,15 +309,18 @@ async def process_user_audio(audio_float32: np.ndarray,
                               auto_trigger: bool = True):
     logging.info("[%s] Transcribing …", session_id)
 
-    def _transcribe():
-        segments, _ = whisper_model.transcribe(audio_float32, beam_size=WHISPER_BEAM_SIZE)
+    def _transcribe(model):
+        segments, _ = model.transcribe(audio_float32, beam_size=WHISPER_BEAM_SIZE)
         return " ".join(s.text for s in segments)
 
     channel = config.active_sessions[session_id].get("channel")
     item_id = generate_id("item")
 
-    async with whisper_queue_lock:
-        user_text = await asyncio.to_thread(_transcribe)
+    model = await whisper_pool.get()
+    try:
+        user_text = await asyncio.to_thread(_transcribe, model)
+    finally:
+        whisper_pool.put_nowait(model)
     user_text = user_text.strip()
 
     if not user_text:

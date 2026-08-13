@@ -50,11 +50,19 @@ REASONING_KWARGS = {
 _whisper_model = os.environ.get("WHISPER_MODEL", "small")
 _whisper_device = os.environ.get("WHISPER_DEVICE", "cuda")
 _whisper_compute = os.environ.get("WHISPER_COMPUTE", "auto")
+_whisper_instances = max(1, int(os.environ.get("WHISPER_INSTANCES", "1")))
 
-logging.info("Loading Faster-Whisper model (%s) on %s/%s …",
-             _whisper_model, _whisper_device, _whisper_compute)
-whisper_model = WhisperModel(_whisper_model, device=_whisper_device, compute_type=_whisper_compute)
-whisper_queue_lock = asyncio.Semaphore(1)  # serialise GPU access
+logging.info("Loading %d Faster-Whisper instance(s) (%s) on %s/%s …",
+             _whisper_instances, _whisper_model, _whisper_device, _whisper_compute)
+# Each instance holds its own copy of the weights, so N instances cost N× VRAM.
+# They are handed out through whisper_pool (an asyncio.Queue), which guarantees
+# a single instance is never used by two transcriptions at the same time.
+whisper_instances = [WhisperModel(_whisper_model, device=_whisper_device,
+                                  compute_type=_whisper_compute)
+                     for _ in range(_whisper_instances)]
+whisper_pool = asyncio.Queue()
+for model in whisper_instances:
+    whisper_pool.put_nowait(model)
 
 # ---------------------------------------------------------------------------
 # Tuning knobs

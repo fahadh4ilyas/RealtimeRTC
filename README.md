@@ -77,6 +77,7 @@ set -a && source .env && set +a && python -m realtimertc.main
 | `WHISPER_MODEL` | `small` |
 | `WHISPER_DEVICE` | `cuda` |
 | `WHISPER_COMPUTE` | `auto` |
+| `WHISPER_INSTANCES` | `1` |
 
 ## API Compatibility
 
