@@ -79,6 +79,8 @@ set -a && source .env && set +a && python -m realtimertc.main
 | `WHISPER_COMPUTE` | `auto` |
 | `WHISPER_INSTANCES` | `1` |
 
+API keys are **not** set via environment — each client enters its own key (and can override the base URLs) in the browser's API Configuration dialog.
+
 ## API Compatibility
 
 Implements the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) event protocol over an `oai-events` WebRTC DataChannel.
@@ -114,6 +116,7 @@ realtimertc/
 - **Tool calling** — streaming function call arguments
 - **Multi-voice** — dynamic TTS voice switching
 - **History trimming** — keeps last 50 messages to prevent context overflow
+- **Multimodal input** — camera snapshot, short video clip (sampled to frames), or uploaded image/video
 
 ## Built-in Tools
 

@@ -3,6 +3,7 @@ Shared configuration, constants, and global state for the Local Realtime API ser
 """
 
 import asyncio
+import base64
 import logging
 import os
 
@@ -13,6 +14,23 @@ from faster_whisper import WhisperModel
 # ---------------------------------------------------------------------------
 pcs = set()
 active_sessions = {}
+
+# Uploaded media (video) keyed by id, inlined into the LLM request as a base64
+# data URL because the WebRTC DataChannel is capped at 64 KB.
+uploaded_media = {}
+
+
+def resolve_media_url(url: str) -> str:
+    """Expand a stored upload id into a base64 data URL (and free the buffer)."""
+    entry = uploaded_media.pop(url, None)
+    if entry:
+        # Keep only the bare media type — vLLM's data URL parser splits on the
+        # first ';' and requires the remainder to be exactly "base64", so a
+        # codec parameter ("video/webm;codecs=vp9") would break it.
+        mime = entry["mime"].split(";")[0]
+        b64 = base64.b64encode(entry["data"]).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    return url
 
 # ---------------------------------------------------------------------------
 # Default system prompt (output goes to TTS — no markdown)
@@ -81,27 +99,31 @@ PRE_SPEECH_BUFFER_CHUNKS = 25         # ~800 ms of look-back audio
 SSE_PREFIX_LENGTH       = 6           # len("data: ")
 
 # ---------------------------------------------------------------------------
-# External API endpoints (configurable via environment)
+# External API endpoints
 # ---------------------------------------------------------------------------
-_VLLM_BASE = os.environ.get("VLLM_BASE_URL", "http://127.0.0.1:5000/v1")
-LLM_API        = os.environ.get("LLM_API",        f"{_VLLM_BASE}/chat/completions")
-LLM_MODELS_API = os.environ.get("LLM_MODELS_API", f"{_VLLM_BASE}/models")
-LLM_API_KEY    = os.environ.get("LLM_API_KEY", "")
+# Base URLs (defaults from environment). Clients may override these per-session
+# by sending llm_base_url / tts_base_url in session.update. API keys are always
+# supplied by the client — no global/backend key is used.
+LLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://127.0.0.1:5000/v1")
+TTS_BASE_URL = os.environ.get("TTS_BASE_URL", "http://127.0.0.1:5000/v1")
 
-_TTS_BASE = os.environ.get("TTS_BASE_URL", "http://127.0.0.1:5000/v1")
-TTS_WS_API     = os.environ.get("TTS_WS_API",
-                     _TTS_BASE.replace("http://", "ws://") + "/audio/speech/stream")
-TTS_LIST_VOICES = os.environ.get("TTS_LIST_VOICES",
-                     f"{_TTS_BASE}/audio/voices")
-TTS_API_KEY    = os.environ.get("TTS_API_KEY", "")
 
-# ---------------------------------------------------------------------------
-# Cached model / voice lists (refreshed periodically in the background)
-# ---------------------------------------------------------------------------
-AVAILABLE_VOICES = []
-DEFAULT_VOICE = ""
-AVAILABLE_MODELS = []
-DEFAULT_MODEL = ""
+def llm_chat_api(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/chat/completions"
+
+
+def llm_models_api(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/models"
+
+
+def tts_ws_api(base_url: str) -> str:
+    ws = base_url.replace("http://", "ws://").replace("https://", "wss://")
+    return f"{ws.rstrip('/')}/audio/speech/stream"
+
+
+def tts_voices_api(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/audio/voices"
+
 
 # ---------------------------------------------------------------------------
 # Monotonic event-ID counter

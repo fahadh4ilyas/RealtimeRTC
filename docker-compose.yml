@@ -1,22 +1,26 @@
-version: "3.8"
-
 services:
   realtimertc:
     build: .
     image: realtimertc:latest
     container_name: realtimertc
-    ports:
-      - "8081:8081"
+    # Host networking is required for WebRTC: bridge networking gives the
+    # container an internal IP and only maps TCP 8081, but WebRTC media/data use
+    # ephemeral UDP ports the browser can't reach. With host networking the
+    # container shares the host's network, so its ICE candidates are routable.
+    network_mode: host
+    volumes:
+      - ${HOME:-~}/.cache/huggingface:/huggingface
     environment:
-      # ── vLLM ──────────────────────────────────────────────────
-      - VLLM_BASE_URL=http://host.docker.internal:5000/v1
-      # ── TTS ───────────────────────────────────────────────────
-      - TTS_BASE_URL=http://host.docker.internal:5000/v1
-      # ── Whisper ───────────────────────────────────────────────
-      - WHISPER_MODEL=small
-      - WHISPER_DEVICE=cuda
-      - WHISPER_COMPUTE=auto
-      - WHISPER_INSTANCES=1
+      - HF_HOME=/huggingface
+      # Values are read from the .env file (copy .env.example → .env and edit).
+      # With host networking, the container reaches vLLM/TTS on the host via
+      # 127.0.0.1 (NOT host.docker.internal, which only exists on bridge nets).
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-http://127.0.0.1:5000/v1}
+      - TTS_BASE_URL=${TTS_BASE_URL:-http://127.0.0.1:5000/v1}
+      - WHISPER_MODEL=${WHISPER_MODEL:-small}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cuda}
+      - WHISPER_COMPUTE=${WHISPER_COMPUTE:-auto}
+      - WHISPER_INSTANCES=${WHISPER_INSTANCES:-1}
     deploy:
       resources:
         reservations:

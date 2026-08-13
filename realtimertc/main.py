@@ -16,26 +16,9 @@ import aiohttp_cors
 from aiohttp import web
 
 from realtimertc import config
-from realtimertc.cache import background_polling_task
+from realtimertc.cache import fetch_models, fetch_voices
+from realtimertc.utils import generate_id
 from realtimertc.webrtc import handle_webrtc_offer
-
-
-# ---------------------------------------------------------------------------
-# App lifecycle helpers
-# ---------------------------------------------------------------------------
-async def _background_worker(app):
-    task = asyncio.create_task(background_polling_task(app))
-    task.add_done_callback(
-        lambda t: logging.error("Background poller crashed: %s", t.exception())
-        if not t.cancelled() and t.exception() else None)
-    logging.info("Background cache poller started.")
-    yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    logging.info("Background cache poller stopped.")
 
 
 async def _shutdown_peers(app):
@@ -45,12 +28,37 @@ async def _shutdown_peers(app):
 # ---------------------------------------------------------------------------
 # REST endpoints
 # ---------------------------------------------------------------------------
+async def upload_media(request: web.Request) -> web.Response:
+    """Store uploaded media (video) and return an id for later inlining."""
+    data = await request.read()
+    mime = request.headers.get("Content-Type", "application/octet-stream")
+    media_id = generate_id("media")
+    config.uploaded_media[media_id] = {"mime": mime, "data": data}
+    return web.json_response({"id": media_id})
+
+
 async def get_models(request: web.Request) -> web.Response:
-    return web.json_response({"models": list(config.AVAILABLE_MODELS)})
+    """Fetch the model list using the client-supplied API key + base URL."""
+    body = await request.json()
+    api_key = (body or {}).get("api_key", "")
+    base_url = (body or {}).get("base_url") or config.LLM_BASE_URL
+    models, error, status = await fetch_models(api_key, base_url)
+    if error is not None:
+        return web.json_response({"error": error},
+                                 status=status if status else 502)
+    return web.json_response({"models": models})
 
 
 async def get_voices(request: web.Request) -> web.Response:
-    return web.json_response({"voices": list(config.AVAILABLE_VOICES)})
+    """Fetch the voice list using the client-supplied API key + base URL."""
+    body = await request.json()
+    api_key = (body or {}).get("api_key", "")
+    base_url = (body or {}).get("base_url") or config.TTS_BASE_URL
+    voices, error, status = await fetch_voices(api_key, base_url)
+    if error is not None:
+        return web.json_response({"error": error},
+                                 status=status if status else 502)
+    return web.json_response({"voices": voices})
 
 
 async def serve_index(request: web.Request) -> web.Response:
@@ -62,8 +70,8 @@ async def serve_index(request: web.Request) -> web.Response:
         return web.Response(status=404, text="index.html not found.")
 
     content = (content
-               .replace("'$AVAILABLE_VOICES_JSON$'", json.dumps(config.AVAILABLE_VOICES))
-               .replace("'$AVAILABLE_MODELS_JSON$'", json.dumps(config.AVAILABLE_MODELS)))
+               .replace("'$LLM_BASE_URL$'", json.dumps(config.LLM_BASE_URL))
+               .replace("'$TTS_BASE_URL$'", json.dumps(config.TTS_BASE_URL)))
     return web.Response(content_type="text/html", text=content)
 
 
@@ -76,18 +84,18 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8081)
     args = parser.parse_args()
 
-    app = web.Application()
+    app = web.Application(client_max_size=100 * 1024 * 1024)
 
     cors = aiohttp_cors.setup(app, defaults={
         "*": aiohttp_cors.ResourceOptions(
             allow_credentials=True, expose_headers="*", allow_headers="*")})
 
     app.router.add_get("/", serve_index)
-    app.router.add_get("/api/voices", get_voices)
-    app.router.add_get("/api/models", get_models)
+    app.router.add_post("/api/upload", upload_media)
+    app.router.add_post("/api/voices", get_voices)
+    app.router.add_post("/api/models", get_models)
     app.router.add_post("/v1/realtime/calls", handle_webrtc_offer)
 
-    app.cleanup_ctx.append(_background_worker)
     app.on_shutdown.append(_shutdown_peers)
 
     for route in list(app.router.routes()):

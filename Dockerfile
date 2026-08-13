@@ -10,12 +10,16 @@ FROM ${BASE}
 # System dependencies
 # ------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 python3.11-venv python3-pip \
+    python3.11 python3.11-venv \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Make python3.11 the default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+# ------------------------------------------------------------------
+# Python venv — Ubuntu disables system ensurepip/pip, so create a
+# self-contained venv (with pip) and run everything from it.
+# ------------------------------------------------------------------
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 

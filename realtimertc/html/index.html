@@ -48,6 +48,38 @@
         </div>
     </div>
 
+    <!-- API Configuration Modal -->
+    <div id="configModal" class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl px-8 py-6 flex flex-col gap-3 w-full max-w-md">
+            <h2 class="text-lg font-bold text-gray-700">API Configuration</h2>
+            <p class="text-xs text-gray-500">Enter your API key to continue.</p>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">LLM API Key</label>
+                <input type="password" id="llmApiKeyInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="sk-…">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">TTS API Key</label>
+                <input type="password" id="ttsApiKeyInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="sk-…">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">LLM Base URL</label>
+                <input type="text" id="llmBaseUrlInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">TTS Base URL</label>
+                <input type="text" id="ttsBaseUrlInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div id="configError" class="hidden text-xs font-semibold text-red-600"></div>
+
+            <button id="loadModelsBtn" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm">Load Models & Voices</button>
+        </div>
+    </div>
+
+    <!-- App content (revealed after login) -->
+    <div id="appContent" class="hidden">
+
     <!-- Top Navigation / Connection Bar -->
     <header class="bg-white border-b border-gray-200 shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center justify-between z-10">
         <div class="flex items-center gap-3">
@@ -70,17 +102,31 @@
                 class="flex-1 sm:w-80 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Server URL"
             >
-            <button 
-                id="connectBtn" 
+            <button
+                id="connectBtn"
                 class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm"
             >
                 Connect
             </button>
-            <button 
-                id="disconnectBtn" 
+            <button
+                id="refreshBtn"
+                disabled
+                class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-md transition-colors border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                🔄 Refresh
+            </button>
+            <button
+                id="disconnectBtn"
                 class="px-4 py-2 bg-red-100 text-red-600 hover:bg-red-200 text-sm font-semibold rounded-md transition-colors hidden"
             >
                 Disconnect
+            </button>
+            <button
+                id="logoutBtn"
+                disabled
+                class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-md transition-colors border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                🚪 Log out
             </button>
         </div>
     </header>
@@ -167,18 +213,51 @@
 
     <!-- Main Interface -->
     <main class="flex-1 overflow-hidden flex flex-col max-w-4xl w-full mx-auto p-4 gap-4">
-        
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex items-center justify-end">
-            <!-- Manual Push-To-Talk Button -->
-            <button id="pttBtn" class="hidden px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none w-full sm:w-auto text-center" title="Hold to talk, release to send">
-                🎤 Push to Talk
-            </button>
+
+        <!-- Media / Camera controls -->
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex flex-col gap-3">
+            <div class="flex items-center gap-2 flex-wrap">
+                <button id="cameraToggleBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors">📷 Enable Camera</button>
+                <button id="uploadBtn" disabled class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed">🖼 Upload Image/Video</button>
+                <button id="pttBtn" class="hidden ml-auto px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none w-full sm:w-auto text-center" title="Hold to talk, release to send">🎤 Push to Talk</button>
+                <input type="file" id="fileInput" accept="image/*,video/*" class="hidden">
+            </div>
+
+            <div id="mediaStatus" class="text-xs text-gray-500 min-h-[1rem]"></div>
+
+            <div id="cameraPanel" class="hidden">
+                <div class="flex items-center gap-3 flex-wrap mb-2">
+                    <select id="captureMode" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                        <option value="snapshot">Single frame</option>
+                        <option value="frames">Multi frames</option>
+                        <option value="video">Video duration</option>
+                    </select>
+                    <div id="durationWrap" class="hidden flex items-center gap-2 flex-1 min-w-[200px]">
+                        <span class="text-xs font-semibold text-gray-600">Duration</span>
+                        <input type="range" id="durationSlider" min="1" max="10" step="1" value="3" class="flex-1 accent-blue-600">
+                        <span id="durationLabel" class="text-xs font-semibold text-gray-600 w-8">3s</span>
+                    </div>
+                    <div id="framesWrap" class="hidden flex items-center gap-2 flex-1 min-w-[200px]">
+                        <span class="text-xs font-semibold text-gray-600">Frames</span>
+                        <input type="range" id="framesSlider" min="1" max="30" step="1" value="6" class="flex-1 accent-blue-600">
+                        <span id="framesLabel" class="text-xs font-semibold text-gray-600 w-8">6</span>
+                    </div>
+                </div>
+                <video id="cameraPreview" autoplay playsinline muted class="w-full max-h-64 bg-black rounded-lg"></video>
+                <button id="attachBtn" disabled class="mt-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm self-end disabled:opacity-50 disabled:cursor-not-allowed">📎 Attach frame</button>
+            </div>
         </div>
 
         <div id="chatHistory" class="flex-1 overflow-y-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-5">
             <div class="text-center text-gray-400 text-sm mt-10">
                 Connect and start speaking to interact with the AI.
             </div>
+        </div>
+
+        <div id="attachmentArea" class="hidden flex items-center gap-2 flex-wrap">
+            <img id="attachmentThumb" class="hidden w-12 h-12 rounded-lg object-cover bg-gray-100">
+            <span id="attachmentCount" class="text-xs font-semibold text-gray-600"></span>
+            <button id="clearAttachmentsBtn" class="px-3 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors">Remove</button>
         </div>
 
         <!-- Text input bar -->
@@ -199,6 +278,8 @@
             </button>
         </div>
     </main>
+
+    </div>
 
     <script>
         const serverUrlInput = document.getElementById('serverUrl');
@@ -230,24 +311,169 @@
         const cancelConnectBtn = document.getElementById('cancelConnectBtn');
         const audioOutputCheckbox = document.getElementById('audioOutputCheckbox');
 
+        const cameraToggleBtn = document.getElementById('cameraToggleBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const cameraPanel = document.getElementById('cameraPanel');
+        const cameraPreview = document.getElementById('cameraPreview');
+        const captureMode = document.getElementById('captureMode');
+        const durationWrap = document.getElementById('durationWrap');
+        const durationSlider = document.getElementById('durationSlider');
+        const durationLabel = document.getElementById('durationLabel');
+        const framesWrap = document.getElementById('framesWrap');
+        const framesSlider = document.getElementById('framesSlider');
+        const framesLabel = document.getElementById('framesLabel');
+        const attachBtn = document.getElementById('attachBtn');
+        const mediaStatus = document.getElementById('mediaStatus');
+        const attachmentArea = document.getElementById('attachmentArea');
+        const attachmentThumb = document.getElementById('attachmentThumb');
+        const attachmentCount = document.getElementById('attachmentCount');
+        const clearAttachmentsBtn = document.getElementById('clearAttachmentsBtn');
+
+        const configModal = document.getElementById('configModal');
+        const llmApiKeyInput = document.getElementById('llmApiKeyInput');
+        const ttsApiKeyInput = document.getElementById('ttsApiKeyInput');
+        const llmBaseUrlInput = document.getElementById('llmBaseUrlInput');
+        const ttsBaseUrlInput = document.getElementById('ttsBaseUrlInput');
+        const loadModelsBtn = document.getElementById('loadModelsBtn');
+        const configError = document.getElementById('configError');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const appContent = document.getElementById('appContent');
+
         serverUrlInput.value = `${window.location.protocol}//${window.location.host}/v1/realtime/calls`;
 
-        const availableModels = '$AVAILABLE_MODELS_JSON$';
-        const availableVoices = '$AVAILABLE_VOICES_JSON$';
-        
-        availableModels.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model;
-            option.textContent = model;
-            modelInput.appendChild(option);
-        });
+        const defaultLlmBaseUrl = '$LLM_BASE_URL$';
+        const defaultTtsBaseUrl = '$TTS_BASE_URL$';
 
-        availableVoices.forEach(voice => {
-            const option = document.createElement('option');
-            option.value = voice;
-            option.textContent = voice;
-            voiceInput.appendChild(option);
-        });
+        llmBaseUrlInput.value = defaultLlmBaseUrl;
+        ttsBaseUrlInput.value = defaultTtsBaseUrl;
+
+        let clientConfig = null; // {api_key, tts_api_key, llm_base_url, tts_base_url}
+
+        function populateSelect(select, items) {
+            const current = select.value;
+            select.innerHTML = '';
+            items.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item;
+                option.textContent = item;
+                select.appendChild(option);
+            });
+            if (current && items.includes(current)) {
+                select.value = current;
+            }
+        }
+
+        function showConfigError(msg) {
+            configError.textContent = msg;
+            configError.classList.remove('hidden');
+        }
+
+        async function readListResponse(res, kind) {
+            if (res.ok) {
+                const data = await res.json();
+                const items = kind === 'model' ? (data.models || []) : (data.voices || []);
+                return { ok: true, items };
+            }
+            let detail = '';
+            try { const d = await res.json(); detail = d.error || ''; } catch (e) {}
+            let msg;
+            if (res.status === 401 || res.status === 403) msg = 'API key not valid.';
+            else if (res.status === 404) msg = kind === 'model' ? 'Model not found.' : 'Voice not found.';
+            else msg = detail || ('Server error (' + res.status + ').');
+            return { ok: false, error: msg };
+        }
+
+        async function fetchLists(apiKey, ttsKey, llmBase, ttsBase) {
+            const [modelsRes, voicesRes] = await Promise.all([
+                fetch('/api/models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey, base_url: llmBase })
+                }),
+                fetch('/api/voices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: ttsKey, base_url: ttsBase })
+                })
+            ]);
+
+            const modelsOutcome = await readListResponse(modelsRes, 'model');
+            const voicesOutcome = await readListResponse(voicesRes, 'voice');
+
+            if (!modelsOutcome.ok) throw new Error('Models: ' + modelsOutcome.error);
+            if (!voicesOutcome.ok) throw new Error('Voices: ' + voicesOutcome.error);
+            return { models: modelsOutcome.items, voices: voicesOutcome.items };
+        }
+
+        async function loadModelsVoices() {
+            const apiKey = llmApiKeyInput.value.trim();
+            const ttsKey = ttsApiKeyInput.value.trim();
+            const llmBase = llmBaseUrlInput.value.trim() || defaultLlmBaseUrl;
+            const ttsBase = ttsBaseUrlInput.value.trim() || defaultTtsBaseUrl;
+
+            configError.classList.add('hidden');
+            if (!apiKey) {
+                showConfigError('API key is required.');
+                return;
+            }
+            loadModelsBtn.disabled = true;
+            loadModelsBtn.textContent = 'Loading…';
+
+            try {
+                const { models, voices } = await fetchLists(apiKey, ttsKey, llmBase, ttsBase);
+                populateSelect(modelInput, models);
+                populateSelect(voiceInput, voices);
+
+                clientConfig = { api_key: apiKey, tts_api_key: ttsKey, llm_base_url: llmBase, tts_base_url: ttsBase };
+                refreshBtn.disabled = false;
+                logoutBtn.disabled = false;
+                configModal.classList.add('hidden');
+                appContent.classList.remove('hidden');
+            } catch (err) {
+                showConfigError(err.message);
+            } finally {
+                loadModelsBtn.disabled = false;
+                loadModelsBtn.textContent = 'Load Models & Voices';
+            }
+        }
+
+        async function refreshLists() {
+            if (!clientConfig) return;
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Refreshing…';
+            try {
+                const { models, voices } = await fetchLists(
+                    clientConfig.api_key, clientConfig.tts_api_key,
+                    clientConfig.llm_base_url, clientConfig.tts_base_url);
+                populateSelect(modelInput, models);
+                populateSelect(voiceInput, voices);
+                appendMessage("system", "Model & voice lists refreshed.");
+            } catch (err) {
+                appendMessage("system", err.message, true);
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
+            }
+        }
+
+        function logout() {
+            disconnect();
+            clientConfig = null;
+            populateSelect(modelInput, []);
+            populateSelect(voiceInput, []);
+            llmApiKeyInput.value = '';
+            ttsApiKeyInput.value = '';
+            refreshBtn.disabled = true;
+            logoutBtn.disabled = true;
+            appContent.classList.add('hidden');
+            configModal.classList.remove('hidden');
+        }
+
+        loadModelsBtn.addEventListener('click', loadModelsVoices);
+        refreshBtn.addEventListener('click', refreshLists);
+        logoutBtn.addEventListener('click', logout);
 
         let pc = null;
         let dc = null;
@@ -274,6 +500,8 @@
                 disconnectBtn.classList.remove('hidden');
                 textInput.disabled = false;
                 sendTextBtn.disabled = false;
+                uploadBtn.disabled = false;
+                attachBtn.disabled = false;
             } else if (status === 'connecting') {
                 loadingOverlay.classList.remove('hidden');
                 statusDot.classList.replace('bg-red-500', 'bg-yellow-500');
@@ -281,6 +509,8 @@
 
                 connectBtn.disabled = true;
                 connectBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                uploadBtn.disabled = true;
+                attachBtn.disabled = true;
             } else {
                 statusDot.classList.replace('bg-green-500', 'bg-red-500');
                 statusDot.classList.replace('bg-yellow-500', 'bg-red-500');
@@ -289,6 +519,8 @@
                 disconnectBtn.classList.add('hidden');
                 textInput.disabled = true;
                 sendTextBtn.disabled = true;
+                uploadBtn.disabled = true;
+                attachBtn.disabled = true;
 
                 connectBtn.disabled = false;
                 connectBtn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -411,8 +643,14 @@
                     reasoning: {
                         effort: reasoningEffortSelect.value
                     }
-                } 
+                }
             };
+            if (clientConfig) {
+                event.session.api_key = clientConfig.api_key;
+                event.session.tts_api_key = clientConfig.tts_api_key;
+                event.session.llm_base_url = clientConfig.llm_base_url;
+                event.session.tts_base_url = clientConfig.tts_base_url;
+            }
             dc.send(JSON.stringify(event));
             
             if (turn_detection === null) {
@@ -443,6 +681,7 @@
             
             // Only trigger the send logic if the button was actually in the recording state (red)
             if (pttBtn.classList.contains('bg-red-500') && dc && dc.readyState === 'open') {
+                sendPendingMedia(); // flush attached frames with this push-to-talk turn
                 dc.send(JSON.stringify({"type": "input_audio_buffer.commit"}));
                 dc.send(JSON.stringify(buildResponseCreate()));
                 pttBtn.classList.replace('bg-red-500', 'bg-amber-500');
@@ -499,20 +738,48 @@
 
         function sendTextMessage() {
             const text = textInput.value.trim();
-            if (!text || !dc || dc.readyState !== 'open') return;
+            if (!text && !pendingMedia.length) return;
+            if (!dc || dc.readyState !== 'open') return;
+
+            const content = [];
+            pendingMedia.forEach(p => content.push(p));
+            if (text) content.push({ type: 'input_text', text: text });
+
+            // Optimistic render (media above text); the server echo for text/media is skipped.
+            if (pendingMedia.length) appendUserMedia(content);
+            else appendMessage("user", text);
+
             // Cancel any in-progress AI response (barge-in)
             dc.send(JSON.stringify({ type: "response.cancel" }));
             dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
-            dc.send(JSON.stringify({
-                type: "conversation.item.create",
-                item: {
-                    type: "message",
-                    role: "user",
-                    content: [{ type: "input_text", text: text }]
+
+            if (pendingMedia.length <= 1) {
+                // Single part (or text-only) fits in one DataChannel message.
+                dc.send(JSON.stringify({
+                    type: "conversation.item.create",
+                    item: { type: "message", role: "user", content: content }
+                }));
+            } else {
+                // Multiple parts: media first (held in pending on the server),
+                // then text — so the server prepends the media to the text.
+                for (const part of pendingMedia) {
+                    dc.send(JSON.stringify({
+                        type: "conversation.item.create",
+                        item: { type: "message", role: "user", content: [part] }
+                    }));
                 }
-            }));
+                if (text) {
+                    dc.send(JSON.stringify({
+                        type: "conversation.item.create",
+                        item: { type: "message", role: "user", content: [{ type: "input_text", text: text }] }
+                    }));
+                }
+            }
+
             dc.send(JSON.stringify(buildResponseCreate()));
             textInput.value = '';
+            pendingMedia = [];
+            updateAttachmentUI();
         }
 
         function execTool(name, callId, argsStr) {
@@ -668,6 +935,361 @@
             }
         });
 
+        // --- Media / Camera ---
+        // aiortc's SCTP transport advertises a 64 KB maxMessageSize, so each
+        // DataChannel message must stay under that: images are resized/re-compressed,
+        // and video is sampled into frames unless the uploaded file is already tiny
+        // enough to send as a single video_url.
+        let cameraStream = null;
+        let pendingMedia = []; // attached media parts, sent with the next message
+        const MEDIA_MAX_BYTES = 50000; // base64 data URL length (~50 KB, under 64 KB cap)
+
+        function setMediaStatus(text) {
+            mediaStatus.textContent = text || '';
+        }
+
+        function updateAttachmentUI() {
+            if (pendingMedia.length) {
+                attachmentArea.classList.remove('hidden');
+                const images = pendingMedia.filter(p => p.type === 'input_image');
+                const videos = pendingMedia.filter(p => p.type === 'input_video');
+                if (videos.length) {
+                    attachmentCount.textContent = `${videos.length} video clip${videos.length > 1 ? 's' : ''} attached`;
+                    attachmentThumb.classList.add('hidden');
+                } else {
+                    attachmentCount.textContent = `${images.length} frame${images.length > 1 ? 's' : ''} attached`;
+                    attachmentThumb.src = images[0].url;
+                    attachmentThumb.classList.remove('hidden');
+                }
+            } else {
+                attachmentArea.classList.add('hidden');
+                attachmentThumb.classList.add('hidden');
+            }
+        }
+
+        function clearAttachments() {
+            pendingMedia = [];
+            updateAttachmentUI();
+            setMediaStatus('Removed attachments');
+        }
+
+        function sendPendingMedia() {
+            if (!pendingMedia.length || !dc || dc.readyState !== 'open') return;
+            const parts = pendingMedia.slice();
+            pendingMedia = [];
+            try {
+                updateAttachmentUI();
+
+                // Render the frames optimistically; the transcript arrives via echo after.
+                appendUserMedia(parts);
+
+                if (parts.length <= 1) {
+                    dc.send(JSON.stringify({
+                        type: 'conversation.item.create',
+                        item: { type: 'message', role: 'user', content: parts }
+                    }));
+                } else {
+                    for (const part of parts) {
+                        dc.send(JSON.stringify({
+                            type: 'conversation.item.create',
+                            item: { type: 'message', role: 'user', content: [part] }
+                        }));
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to send attached media:', err);
+                setMediaStatus('Failed to send media (message too large?)');
+            }
+        }
+
+        function showCameraPanel() {
+            cameraPanel.classList.remove('hidden');
+            cameraPanel.classList.add('flex', 'flex-col', 'gap-3');
+        }
+
+        function hideCameraPanel() {
+            cameraPanel.classList.add('hidden');
+            cameraPanel.classList.remove('flex', 'flex-col', 'gap-3');
+        }
+
+        async function toggleCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(t => t.stop());
+                cameraStream = null;
+                cameraPreview.srcObject = null;
+                hideCameraPanel();
+                cameraToggleBtn.textContent = '📷 Enable Camera';
+                cameraToggleBtn.classList.remove('bg-red-100', 'text-red-600');
+                return;
+            }
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                cameraPreview.srcObject = cameraStream;
+                showCameraPanel();
+                cameraToggleBtn.textContent = '📷 Disable Camera';
+                cameraToggleBtn.classList.add('bg-red-100', 'text-red-600');
+            } catch (err) {
+                alert('Camera access failed: ' + err.message);
+            }
+        }
+
+        function drawToCanvas(source, maxDim) {
+            const w = source.videoWidth || source.naturalWidth || source.width || maxDim;
+            const h = source.videoHeight || source.naturalHeight || source.height || maxDim;
+            const scale = Math.min(1, maxDim / Math.max(w, h));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(w * scale));
+            canvas.height = Math.max(1, Math.round(h * scale));
+            canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+            return canvas;
+        }
+
+        function toCompressedJpeg(canvas, maxBytes) {
+            let quality = 0.75;
+            let out = canvas.toDataURL('image/jpeg', quality);
+            while (out.length > maxBytes && quality > 0.25) {
+                quality -= 0.15;
+                out = canvas.toDataURL('image/jpeg', quality);
+            }
+            return out;
+        }
+
+        function captureJpeg(source, maxDim = 1024, maxBytes = MEDIA_MAX_BYTES) {
+            let dim = maxDim;
+            let out = '';
+            for (let i = 0; i < 4; i++) {
+                const canvas = drawToCanvas(source, dim);
+                out = toCompressedJpeg(canvas, maxBytes);
+                if (out.length <= maxBytes) break;
+                dim = Math.round(dim * 0.7);
+            }
+            return out;
+        }
+
+        function loadImage(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = url;
+            });
+        }
+
+        function pickSupportedMime() {
+            const candidates = [
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm',
+                'video/mp4',
+            ];
+            for (const m of candidates) {
+                if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+            }
+            return '';
+        }
+
+        function recordWebcam(secs) {
+            return new Promise((resolve, reject) => {
+                if (!window.MediaRecorder) { reject(new Error('MediaRecorder not supported')); return; }
+                const mime = pickSupportedMime();
+                const rec = new MediaRecorder(cameraStream, mime ? { mimeType: mime } : undefined);
+                const chunks = [];
+                rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+                rec.onstop = () => {
+                    // The full codec mime (e.g. "video/webm;codecs=vp9") is only for
+                    // MediaRecorder; the stored/uploaded mime must be the bare type so
+                    // the data URL stays "data:video/webm;base64,…" (vLLM splits on the
+                    // first ';' and rejects anything that isn't exactly "base64").
+                    const cleanMime = (mime || 'video/webm').split(';')[0];
+                    resolve({ blob: new Blob(chunks, { type: cleanMime }), mime: cleanMime });
+                };
+                rec.onerror = () => reject(new Error('Recording failed'));
+                rec.start();
+                setTimeout(() => { if (rec.state !== 'inactive') rec.stop(); }, secs * 1000);
+            });
+        }
+
+        async function uploadMedia(blob, mime) {
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': mime || blob.type || 'application/octet-stream' },
+                body: blob
+            });
+            if (!res.ok) throw new Error('Upload failed (HTTP ' + res.status + ')');
+            const data = await res.json();
+            return data.id;
+        }
+
+        function appendUserMedia(content) {
+            const textPart = content.find(c => c.type === 'input_text');
+            const images = content.filter(c => c.type === 'input_image');
+            const videos = content.filter(c => c.type === 'input_video');
+
+            if (chatHistory.children.length === 1 && chatHistory.children[0].classList.contains('text-center')) {
+                chatHistory.innerHTML = '';
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex w-full justify-end my-1';
+            const bubble = document.createElement('div');
+            bubble.className = 'max-w-[85%] px-4 py-3 rounded-2xl text-sm bg-blue-600 text-white rounded-br-none shadow-sm flex flex-col gap-2';
+
+            // Media first (image/video above the text)
+            if (images.length) {
+                const img = document.createElement('img');
+                img.src = images[0].url;
+                img.className = 'rounded-lg max-w-48 max-h-48 object-cover';
+                bubble.appendChild(img);
+                if (images.length > 1) {
+                    const n = document.createElement('div');
+                    n.className = 'text-xs opacity-80';
+                    n.innerText = `+${images.length - 1} more frame${images.length > 2 ? 's' : ''}`;
+                    bubble.appendChild(n);
+                }
+            }
+            if (videos.length) {
+                const v = document.createElement('div');
+                v.className = 'text-xs opacity-90';
+                v.innerText = '🎬 Video clip';
+                bubble.appendChild(v);
+            }
+            if (textPart) {
+                const t = document.createElement('div');
+                t.className = 'whitespace-pre-wrap leading-relaxed break-words';
+                t.innerText = textPart.text;
+                bubble.appendChild(t);
+            }
+
+            wrapper.appendChild(bubble);
+            chatHistory.appendChild(wrapper);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        async function onAttachFrames() {
+            const mode = captureMode.value;
+            if (mode === 'snapshot') {
+                setMediaStatus('Capturing frame…');
+                const jpeg = captureJpeg(cameraPreview, 1024, MEDIA_MAX_BYTES);
+                pendingMedia.push({ type: 'input_image', url: jpeg });
+                updateAttachmentUI();
+                setMediaStatus('Attached 1 frame');
+            } else if (mode === 'frames') {
+                const secs = parseInt(durationSlider.value, 10) || 1;
+                const n = Math.max(1, parseInt(framesSlider.value, 10) || 1);
+                const intervalMs = (secs * 1000) / n;
+                attachBtn.disabled = true;
+                const original = attachBtn.textContent;
+                try {
+                    const frames = [];
+                    for (let i = 0; i < n; i++) {
+                        attachBtn.textContent = `Capturing… ${i + 1}/${n}`;
+                        setMediaStatus(`Capturing frame ${i + 1}/${n}…`);
+                        frames.push(captureJpeg(cameraPreview, 1024, MEDIA_MAX_BYTES));
+                        if (i < n - 1) await new Promise(r => setTimeout(r, intervalMs));
+                    }
+                    pendingMedia.push(...frames.map(f => ({ type: 'input_image', url: f })));
+                    updateAttachmentUI();
+                    setMediaStatus(`Attached ${frames.length} frame${frames.length > 1 ? 's' : ''}`);
+                } finally {
+                    attachBtn.disabled = false;
+                    attachBtn.textContent = original;
+                }
+            } else {
+                const secs = parseInt(durationSlider.value, 10) || 1;
+                attachBtn.disabled = true;
+                const original = attachBtn.textContent;
+                try {
+                    attachBtn.textContent = `Recording… ${secs}s`;
+                    setMediaStatus(`Recording video… ${secs}s`);
+                    const { blob, mime } = await recordWebcam(secs);
+                    setMediaStatus('Uploading video…');
+                    const id = await uploadMedia(blob, mime);
+                    pendingMedia.push({ type: 'input_video', url: id });
+                    updateAttachmentUI();
+                    setMediaStatus('Attached video');
+                } catch (err) {
+                    setMediaStatus('Video failed: ' + err.message);
+                } finally {
+                    attachBtn.disabled = false;
+                    attachBtn.textContent = original;
+                }
+            }
+        }
+
+        async function onFileSelected(file) {
+            if (!file) return;
+            if (file.type.startsWith('image/')) {
+                setMediaStatus('Processing image…');
+                const url = URL.createObjectURL(file);
+                try {
+                    const img = await loadImage(url);
+                    const jpeg = captureJpeg(img, 1024, MEDIA_MAX_BYTES);
+                    pendingMedia.push({ type: 'input_image', url: jpeg });
+                    updateAttachmentUI();
+                    setMediaStatus('Attached image');
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
+            } else if (file.type.startsWith('video/')) {
+                setMediaStatus('Uploading video…');
+                try {
+                    const id = await uploadMedia(file, file.type.split(';')[0]);
+                    pendingMedia.push({ type: 'input_video', url: id });
+                    updateAttachmentUI();
+                    setMediaStatus('Attached video');
+                } catch (err) {
+                    setMediaStatus('Video failed: ' + err.message);
+                }
+            } else {
+                alert('Unsupported file type.');
+            }
+        }
+
+        cameraToggleBtn.addEventListener('click', toggleCamera);
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            onFileSelected(e.target.files[0]);
+            e.target.value = '';
+        });
+        attachBtn.addEventListener('click', onAttachFrames);
+        clearAttachmentsBtn.addEventListener('click', clearAttachments);
+        captureMode.addEventListener('change', () => {
+            const mode = captureMode.value;
+            durationWrap.classList.toggle('hidden', mode === 'snapshot');
+            framesWrap.classList.toggle('hidden', mode !== 'frames');
+            updateAttachButtonLabel();
+            updateFramesSliderMin();
+        });
+        durationSlider.addEventListener('input', () => {
+            durationLabel.textContent = durationSlider.value + 's';
+            updateFramesSliderMin();
+        });
+        framesSlider.addEventListener('input', () => {
+            framesLabel.textContent = framesSlider.value;
+        });
+
+        function updateAttachButtonLabel() {
+            const mode = captureMode.value;
+            if (mode === 'snapshot') attachBtn.textContent = '📎 Attach frame';
+            else if (mode === 'frames') attachBtn.textContent = '📎 Attach frames';
+            else attachBtn.textContent = '📎 Attach video';
+        }
+
+        function updateFramesSliderMin() {
+            const dur = parseInt(durationSlider.value, 10) || 1;
+            framesSlider.min = dur;
+            if (parseInt(framesSlider.value, 10) < dur) {
+                framesSlider.value = dur;
+                framesLabel.textContent = dur;
+            }
+        }
+
+        updateAttachButtonLabel();
+        updateFramesSliderMin();
+
         // --- Connection ---
         async function connect() {
             if (connectBtn.disabled) return;
@@ -742,6 +1364,7 @@
                         case "input_audio_buffer.speech_started":
                             speechIndicator.classList.remove('hidden');
                             processingIndicator.classList.add('hidden');
+                            sendPendingMedia(); // flush attached frames so they join this spoken turn
                             break;
                         case "input_audio_buffer.speech_stopped":
                             speechIndicator.classList.add('hidden');
@@ -761,13 +1384,11 @@
                             break;
                         case "conversation.item.added":
                             if (msg.item && msg.item.role === "user") {
-                                const itemId = msg.item.id;
-                                if (msg.item.content && msg.item.content[0]) {
-                                    if (msg.item.content[0].type === "input_audio") {
-                                        appendMessage("user", `🎤 ${msg.item.content[0].transcript}`, false, itemId);
-                                    } else if (msg.item.content[0].type === "input_text") {
-                                        appendMessage("user", msg.item.content[0].text, false, itemId);
-                                    }
+                                // Only audio transcription is rendered here; text and
+                                // media are rendered optimistically at send time.
+                                const content = msg.item.content || [];
+                                if (content[0] && content[0].type === "input_audio") {
+                                    appendMessage("user", `🎤 ${content[0].transcript}`, false, msg.item.id);
                                 }
                             } else if (msg.item && msg.item.role === "tool") {
                                 appendMessage("tool_result", `🛠️ ${msg.item.content}`);
@@ -929,6 +1550,14 @@
             if (dc) { dc.onclose = null; dc.close(); dc = null; }
             if (pc) { pc.close(); pc = null; }
             if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+            if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+            cameraPreview.srcObject = null;
+            hideCameraPanel();
+            cameraToggleBtn.textContent = '📷 Enable Camera';
+            cameraToggleBtn.classList.remove('bg-red-100', 'text-red-600');
+            pendingMedia = [];
+            updateAttachmentUI();
+            setMediaStatus('');
             updateStatus('disconnected');
 
             // Clear the chat box and restore the default placeholder message

@@ -17,31 +17,24 @@ from realtimertc.audio import LocalAIAudioTrack, receive_audio_from_tts
 from realtimertc import config
 from realtimertc.config import (
     INT16_TO_FLOAT,
-    LLM_API,
-    LLM_API_KEY,
     PRE_SPEECH_BUFFER_CHUNKS,
     REASONING_KWARGS,
     SILERO_CHUNK_MS,
     SILERO_CHUNK_SIZE,
     SILERO_SAMPLE_RATE,
     SSE_PREFIX_LENGTH,
-    TTS_API_KEY,
-    TTS_WS_API,
     WEBRTC_SAMPLE_RATE,
     WHISPER_BEAM_SIZE,
+    llm_chat_api,
+    tts_ws_api,
     whisper_pool,
 )
 from realtimertc.utils import channel_open, generate_id, trim_history
 
 
-def _llm_headers():
-    """Build auth headers for LLM API calls."""
-    return {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
-
-
-def _tts_headers():
-    """Build auth headers for TTS API calls."""
-    return {"Authorization": f"Bearer {TTS_API_KEY}"} if TTS_API_KEY else {}
+def _headers(api_key: str) -> dict:
+    """Build auth headers from a client-supplied API key."""
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
 # ---------------------------------------------------------------------------
@@ -55,15 +48,32 @@ async def trigger_ai_response(session_id: str,
         return
 
     history = session_data["history"]
+    # Flush media that arrived without text (e.g. an image sent with no spoken
+    # or typed question) so it is still included, with a default prompt.
+    pending = session_data.get("pending_media", [])
+    if pending:
+        history.append({"role": "user",
+                        "content": pending + [{"type": "text",
+                                               "text": "Please describe what you see in the attached media."}],
+                        "id": generate_id("item")})
+        pending.clear()
+
     session_config = session_data["config"]
     channel = session_data.get("channel")
+
+    llm_key = session_data.get("api_key", "")
+    tts_key = session_data.get("tts_api_key", "")
+    llm_base_url = session_data.get("llm_base_url") or config.LLM_BASE_URL
+    tts_base_url = session_data.get("tts_base_url") or config.TTS_BASE_URL
+    llm_api = llm_chat_api(llm_base_url)
+    tts_ws_url = tts_ws_api(tts_base_url)
 
     req_config = response_config or {}
     modalities = req_config.get("output_modalities",
                                 session_config.get("output_modalities", ["audio"]))
     tools = req_config.get("tools", session_config.get("tools", []))
     voice = req_config.get("audio", {}).get("output", {}).get(
-        "voice", session_config.get("audio", {}).get("output", {}).get("voice", config.DEFAULT_VOICE))
+        "voice", session_config.get("audio", {}).get("output", {}).get("voice", ""))
     model_name = req_config.get("model", session_config.get("model", "Qwen3.5-9B"))
     reasoning_effort = req_config.get("reasoning", {}).get(
         "effort", session_config.get("reasoning", {}).get("effort", "none"))
@@ -90,8 +100,8 @@ async def trigger_ai_response(session_id: str,
 
     session = aiohttp.ClientSession()
     try:
-        async with session.post(LLM_API, json=llm_payload,
-                headers=_llm_headers()) as llm_resp:
+        async with session.post(llm_api, json=llm_payload,
+                headers=_headers(llm_key)) as llm_resp:
             if llm_resp.status != 200:
                 error_text = await llm_resp.text()
                 logging.error("[%s] LLM API error %s: %s", session_id, llm_resp.status, error_text)
@@ -152,8 +162,8 @@ async def trigger_ai_response(session_id: str,
                             has_init_tts = True
                             if "audio" in modalities:
                                 try:
-                                    ws = await session.ws_connect(TTS_WS_API,
-                                            headers=_tts_headers())
+                                    ws = await session.ws_connect(tts_ws_url,
+                                            headers=_headers(tts_key))
                                     await ws.send_json({"type": "session.config",
                                                         "voice": voice,
                                                         "response_format": "pcm",
@@ -333,8 +343,17 @@ async def process_user_audio(audio_float32: np.ndarray,
         return
 
     logging.info("[%s] User said: %s", session_id, user_text)
-    hist = config.active_sessions[session_id]["history"]
-    hist.append({"role": "user", "content": user_text, "id": item_id})
+    sd = config.active_sessions[session_id]
+    hist = sd["history"]
+    pending = sd.get("pending_media", [])
+    if pending:
+        # Combine the transcript with any held media (image/video) so they
+        # reach the model as one user turn rather than two separate messages.
+        content = pending + [{"type": "text", "text": user_text}]
+        hist.append({"role": "user", "content": content, "id": item_id})
+        pending.clear()
+    else:
+        hist.append({"role": "user", "content": user_text, "id": item_id})
     trim_history(hist)
 
     if channel_open(channel):

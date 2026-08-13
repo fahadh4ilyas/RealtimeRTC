@@ -56,8 +56,13 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
         "commit_consumed_event": asyncio.Event(),
         "response_task": None,
         "transcription_task": None,
+        "api_key": "",
+        "tts_api_key": "",
+        "llm_base_url": config.LLM_BASE_URL,
+        "tts_base_url": config.TTS_BASE_URL,
+        "pending_media": [],
         "config": {
-            "model": config.DEFAULT_MODEL,
+            "model": "",
             "output_modalities": ["audio"],
             "audio": {
                 "input": {
@@ -68,7 +73,7 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                         "silence_duration_ms": 500,
                     }
                 },
-                "output": {"voice": config.DEFAULT_VOICE},
+                "output": {"voice": ""},
             },
             "instructions": config.DEFAULT_SYSTEM_PROMPT,
             "reasoning": {"effort": "none"},
@@ -250,7 +255,12 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                 # ======================================================
                 if etype == "session.update":
                     sp = event.get("session", {})
-                    cfg = config.active_sessions[session_id]["config"]
+                    sd = config.active_sessions[session_id]
+                    cfg = sd["config"]
+
+                    for key in ("api_key", "tts_api_key", "llm_base_url", "tts_base_url"):
+                        if key in sp:
+                            sd[key] = sp[key]
 
                     for key in ("model", "output_modalities", "tools"):
                         if key in sp:
@@ -276,15 +286,7 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                             out = cfg["audio"].setdefault("output", {})
                             for ok in ("voice",):
                                 if ok in ap["output"]:
-                                    v = ap["output"][ok]
-                                    if out.get(ok) != v:
-                                        if ok == "voice" and v not in list(config.AVAILABLE_VOICES):
-                                            logging.warning(
-                                                "[%s] Unavailable voice '%s'. Keeping '%s'.",
-                                                session_id, v,
-                                                out.get("voice", config.DEFAULT_VOICE))
-                                            continue
-                                        out[ok] = v
+                                    out[ok] = ap["output"][ok]
 
                     if "reasoning" in sp:
                         cfg.setdefault("reasoning", {})
@@ -314,11 +316,43 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                     hist = config.active_sessions[session_id]["history"]
 
                     if item.get("type") == "message" and item.get("role") == "user":
+                        # Map Realtime-style content parts to the OpenAI chat format
+                        # expected by vLLM: input_text → text, input_image → image_url,
+                        # input_video → video_url. A single text-only part stays a
+                        # plain string for backward compatibility.
+                        content_parts = []
                         for cb in item.get("content", []):
-                            if cb.get("type") == "input_text":
-                                hist.append({"role": "user", "content": cb["text"],
+                            cb_type = cb.get("type")
+                            if cb_type == "input_text":
+                                content_parts.append({"type": "text",
+                                                      "text": cb.get("text", "")})
+                            elif cb_type == "input_image":
+                                content_parts.append({"type": "image_url",
+                                                      "image_url": {"url": cb.get("url", "")}})
+                            elif cb_type == "input_video":
+                                content_parts.append({"type": "video_url",
+                                                      "video_url": {"url": config.resolve_media_url(cb.get("url", ""))}})
+                        if content_parts:
+                            pending = config.active_sessions[session_id]["pending_media"]
+                            if any(p["type"] == "text" for p in content_parts):
+                                # Text present — append immediately, merging any media
+                                # held from a previous media-only message so it isn't
+                                # left dangling.
+                                if pending:
+                                    content_parts = pending + content_parts
+                                    pending.clear()
+                                if len(content_parts) == 1 and content_parts[0]["type"] == "text":
+                                    content = content_parts[0]["text"]
+                                else:
+                                    content = content_parts
+                                hist.append({"role": "user", "content": content,
                                              "id": item.get("id", generate_id("item"))})
                                 trim_history(hist)
+                            else:
+                                # Media-only — hold it and combine with the next user
+                                # text (the spoken transcript) so the image is tied to
+                                # the actual question, not a default prompt.
+                                pending.extend(content_parts)
 
                     elif item.get("type") == "function_call_output":
                         hist.append({
@@ -431,15 +465,6 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
 
                     resp_cfg = event.get("response", {})
                     cfg = config.active_sessions[session_id]["config"]
-
-                    # validate per-response voice override
-                    if ("audio" in resp_cfg and "output" in resp_cfg["audio"]
-                            and "voice" in resp_cfg["audio"]["output"]):
-                        v = resp_cfg["audio"]["output"]["voice"]
-                        if v != cfg["audio"]["output"].get("voice", config.DEFAULT_VOICE):
-                            if v not in list(config.AVAILABLE_VOICES):
-                                logging.warning("[%s] Unavailable voice '%s'.", session_id, v)
-                                resp_cfg["audio"]["output"].pop("voice", None)
 
                     async def _queued_response():
                         sd = config.active_sessions[session_id]
