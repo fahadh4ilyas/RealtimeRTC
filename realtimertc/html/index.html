@@ -1283,8 +1283,10 @@
             framesSlider.min = dur;
             if (parseInt(framesSlider.value, 10) < dur) {
                 framesSlider.value = dur;
-                framesLabel.textContent = dur;
             }
+            // Always re-sync the label — the browser may have clamped the value
+            // itself when min was raised, leaving the label stale otherwise.
+            framesLabel.textContent = framesSlider.value;
         }
 
         updateAttachButtonLabel();
