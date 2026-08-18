@@ -231,6 +231,7 @@
                         <option value="snapshot">Single frame</option>
                         <option value="frames">Multi frames</option>
                         <option value="video">Video duration</option>
+                        <option value="track">Auto Track</option>
                     </select>
                     <div id="durationWrap" class="hidden flex items-center gap-2 flex-1 min-w-[200px]">
                         <span class="text-xs font-semibold text-gray-600">Duration</span>
@@ -942,6 +943,8 @@
         // enough to send as a single video_url.
         let cameraStream = null;
         let pendingMedia = []; // attached media parts, sent with the next message
+        let videoTransceiver = null; // reserved video m-line for auto-track
+        let tracking = false; // auto-track active?
         const MEDIA_MAX_BYTES = 50000; // base64 data URL length (~50 KB, under 64 KB cap)
 
         function setMediaStatus(text) {
@@ -1254,28 +1257,62 @@
             onFileSelected(e.target.files[0]);
             e.target.value = '';
         });
-        attachBtn.addEventListener('click', onAttachFrames);
+        attachBtn.addEventListener('click', () => {
+            if (captureMode.value === 'track') toggleTracking();
+            else onAttachFrames();
+        });
         clearAttachmentsBtn.addEventListener('click', clearAttachments);
         captureMode.addEventListener('change', () => {
             const mode = captureMode.value;
             durationWrap.classList.toggle('hidden', mode === 'snapshot');
-            framesWrap.classList.toggle('hidden', mode !== 'frames');
+            framesWrap.classList.toggle('hidden', mode !== 'frames' && mode !== 'track');
             updateAttachButtonLabel();
             updateFramesSliderMin();
+            if (mode !== 'track') stopTracking();
         });
         durationSlider.addEventListener('input', () => {
             durationLabel.textContent = durationSlider.value + 's';
             updateFramesSliderMin();
+            stopTracking();
         });
         framesSlider.addEventListener('input', () => {
             framesLabel.textContent = framesSlider.value;
+            stopTracking();
         });
 
         function updateAttachButtonLabel() {
             const mode = captureMode.value;
             if (mode === 'snapshot') attachBtn.textContent = '📎 Attach frame';
             else if (mode === 'frames') attachBtn.textContent = '📎 Attach frames';
-            else attachBtn.textContent = '📎 Attach video';
+            else if (mode === 'video') attachBtn.textContent = '📎 Attach video';
+            else attachBtn.textContent = tracking ? '⏹ Stop Track' : '🎥 Start Track';
+        }
+
+        function stopTracking() {
+            if (!tracking) return;
+            if (videoTransceiver && videoTransceiver.sender) videoTransceiver.sender.replaceTrack(null);
+            if (dc && dc.readyState === 'open') dc.send(JSON.stringify({ type: 'track.stop' }));
+            tracking = false;
+            updateAttachButtonLabel();
+            setMediaStatus('Tracking stopped');
+        }
+
+        async function toggleTracking() {
+            if (!dc || dc.readyState !== 'open') { setMediaStatus('Not connected'); return; }
+            if (tracking) {
+                stopTracking();
+            } else {
+                if (!cameraStream) { setMediaStatus('Enable camera first'); return; }
+                const videoTrack = cameraStream.getVideoTracks()[0];
+                if (!videoTrack) { setMediaStatus('No camera track'); return; }
+                if (videoTransceiver && videoTransceiver.sender) videoTransceiver.sender.replaceTrack(videoTrack);
+                const frames = parseInt(framesSlider.value, 10) || 1;
+                const duration = parseInt(durationSlider.value, 10) || 1;
+                dc.send(JSON.stringify({ type: 'track.start', frames, duration }));
+                tracking = true;
+                updateAttachButtonLabel();
+                setMediaStatus('Tracking…');
+            }
         }
 
         function updateFramesSliderMin() {
@@ -1326,6 +1363,9 @@
                 };
                 pc = new RTCPeerConnection(configuration);
                 pc.addTrack(localStream.getTracks()[0], localStream);
+                // Reserve a video m-line so the camera track can be attached later
+                // via replaceTrack() without renegotiation.
+                videoTransceiver = pc.addTransceiver('video', { direction: 'sendonly' });
 
                 pc.ontrack = (event) => {
                     if (event.streams && event.streams[0]) {
@@ -1558,6 +1598,8 @@
             cameraToggleBtn.textContent = '📷 Enable Camera';
             cameraToggleBtn.classList.remove('bg-red-100', 'text-red-600');
             pendingMedia = [];
+            tracking = false;
+            videoTransceiver = null;
             updateAttachmentUI();
             setMediaStatus('');
             updateStatus('disconnected');

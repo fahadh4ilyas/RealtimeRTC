@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import traceback
+from collections import deque
 
 from aiortc import (
     RTCPeerConnection,
@@ -18,7 +19,11 @@ from silero_vad_lite import SileroVAD
 
 from realtimertc import config
 from realtimertc.audio import LocalAIAudioTrack
-from realtimertc.realtime import process_incoming_audio, trigger_ai_response
+from realtimertc.realtime import (
+    process_incoming_audio,
+    process_incoming_video,
+    trigger_ai_response,
+)
 from realtimertc.utils import cleanup_session, generate_id, trim_history
 
 
@@ -61,6 +66,10 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
         "llm_base_url": config.LLM_BASE_URL,
         "tts_base_url": config.TTS_BASE_URL,
         "pending_media": [],
+        "tracking": False,
+        "tracked_frames": deque(maxlen=30),
+        "track_sample_interval": 0.1,
+        "last_sample_time": 0.0,
         "config": {
             "model": "",
             "output_modalities": ["audio"],
@@ -333,14 +342,9 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                 content_parts.append({"type": "video_url",
                                                       "video_url": {"url": config.resolve_media_url(cb.get("url", ""))}})
                         if content_parts:
-                            pending = config.active_sessions[session_id]["pending_media"]
                             if any(p["type"] == "text" for p in content_parts):
-                                # Text present — append immediately, merging any media
-                                # held from a previous media-only message so it isn't
-                                # left dangling.
-                                if pending:
-                                    content_parts = pending + content_parts
-                                    pending.clear()
+                                # Text present — append immediately (text + any media
+                                # that arrived in the same message).
                                 if len(content_parts) == 1 and content_parts[0]["type"] == "text":
                                     content = content_parts[0]["text"]
                                 else:
@@ -349,10 +353,9 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                              "id": item.get("id", generate_id("item"))})
                                 trim_history(hist)
                             else:
-                                # Media-only — hold it and combine with the next user
-                                # text (the spoken transcript) so the image is tied to
-                                # the actual question, not a default prompt.
-                                pending.extend(content_parts)
+                                # Media-only — hold it; merged with the current turn
+                                # in trigger_ai_response.
+                                config.active_sessions[session_id]["pending_media"].extend(content_parts)
 
                     elif item.get("type") == "function_call_output":
                         hist.append({
@@ -450,6 +453,25 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                              "event_id": generate_id()}))
 
                 # ======================================================
+                # video track control (auto-track mode)
+                # ======================================================
+                elif etype == "track.start":
+                    sd = config.active_sessions[session_id]
+                    sd["tracking"] = True
+                    frames_n = max(1, int(event.get("frames", 30)))
+                    duration = max(0.1, float(event.get("duration", 3.0)))
+                    sd["tracked_frames"] = deque(maxlen=frames_n)
+                    sd["track_sample_interval"] = duration / frames_n
+                    sd["last_sample_time"] = 0.0
+
+                elif etype == "track.stop":
+                    sd = config.active_sessions[session_id]
+                    sd["tracking"] = False
+                    # Drop any buffered frames so a later response doesn't reuse
+                    # a stale "tracked" video after tracking has stopped.
+                    sd["tracked_frames"].clear()
+
+                # ======================================================
                 # response.create / cancel
                 # ======================================================
                 elif etype == "response.cancel":
@@ -500,6 +522,9 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
         if track.kind == "audio":
             asyncio.create_task(
                 process_incoming_audio(track, local_audio, session_id, session_vad))
+        elif track.kind == "video":
+            asyncio.create_task(
+                process_incoming_video(track, session_id))
 
     # ------------------------------------------------------------------
     # SDP handshake

@@ -3,8 +3,11 @@ Core real-time pipeline: VAD → STT → LLM → TTS.
 """
 
 import asyncio
+import base64
+import io
 import json
 import logging
+import time
 import traceback
 from collections import deque
 
@@ -37,6 +40,82 @@ def _headers(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
+def frames_to_mp4(frames, fps):
+    """Encode a list of RGB ndarray frames into an mp4, returning a base64 data URL."""
+    if not frames:
+        return None
+    h, w = frames[0].shape[:2]
+    w -= w % 2
+    h -= h % 2
+    out = io.BytesIO()
+    container = av.open(out, mode="w", format="mp4")
+    stream = container.add_stream("libx264", rate=fps)
+    stream.width = w
+    stream.height = h
+    stream.pix_fmt = "yuv420p"
+    for i, arr in enumerate(frames):
+        frame = av.VideoFrame.from_ndarray(arr[:h, :w], format="rgb24")
+        frame = frame.reformat(format="yuv420p", width=w, height=h)
+        frame.pts = i
+        for packet in stream.encode(frame):
+            container.mux(packet)
+    for packet in stream.encode():
+        container.mux(packet)
+    container.close()
+    return "data:video/mp4;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+
+
+def frame_to_jpeg(arr):
+    """Encode a single RGB ndarray frame into a JPEG base64 data URL."""
+    frame = av.VideoFrame.from_ndarray(arr, format="rgb24")
+    codec = av.codec.CodecContext.create("mjpeg", "w")
+    codec.width = frame.width
+    codec.height = frame.height
+    codec.pix_fmt = "yuvj420p"
+    data = b""
+    for packet in codec.encode(frame):
+        data += bytes(packet)
+    data += bytes(codec.encode(None))
+    return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+
+
+def _track_rgb_small(frame, max_dim=480):
+    """Reformat an av.VideoFrame into a small RGB ndarray (memory bound)."""
+    w, h = frame.width, frame.height
+    scale = min(1.0, max_dim / max(w, h))
+    nw = max(2, int(w * scale))
+    nh = max(2, int(h * scale))
+    nw -= nw % 2
+    nh -= nh % 2
+    return frame.reformat(format="rgb24", width=nw, height=nh).to_ndarray()
+
+
+async def process_incoming_video(track, session_id):
+    """Consume the inbound video track, sampling frames into a rolling buffer.
+
+    Frames are only recorded while the session's ``tracking`` flag is set
+    (toggled by the client's track.start / track.stop events), and are sampled
+    at ``track_sample_interval`` so the buffer spans the configured duration.
+    """
+    while True:
+        try:
+            frame = await track.recv()
+        except Exception:
+            break
+        sd = config.active_sessions.get(session_id)
+        if not sd:
+            break
+        if not sd.get("tracking"):
+            continue
+        now = time.time()
+        if now - sd.get("last_sample_time", 0.0) >= sd.get("track_sample_interval", 1 / 30):
+            sd["last_sample_time"] = now
+            try:
+                sd["tracked_frames"].append(_track_rgb_small(frame))
+            except Exception:
+                pass
+
+
 # ---------------------------------------------------------------------------
 # trigger_ai_response — stream LLM output through TTS back to the client
 # ---------------------------------------------------------------------------
@@ -48,15 +127,44 @@ async def trigger_ai_response(session_id: str,
         return
 
     history = session_data["history"]
-    # Flush media that arrived without text (e.g. an image sent with no spoken
-    # or typed question) so it is still included, with a default prompt.
-    pending = session_data.get("pending_media", [])
-    if pending:
-        history.append({"role": "user",
-                        "content": pending + [{"type": "text",
-                                               "text": "Please describe what you see in the attached media."}],
-                        "id": generate_id("item")})
-        pending.clear()
+    # Collect all media for this turn — held attachments (pending_media) plus
+    # the auto-tracked frames — and attach them to the current user message.
+    # Skip this entirely when the last message is a tool result: that's a
+    # function-call continuation, not a fresh user turn, so any held media
+    # belongs to the next user question and must be left undisturbed.
+    last_role = history[-1].get("role") if history else None
+    if last_role != "tool":
+        media_parts = list(session_data.get("pending_media", []))
+        session_data["pending_media"] = []
+
+        tracked = session_data.get("tracked_frames")
+        if session_data.get("tracking") and tracked and len(tracked) > 0:
+            if len(tracked) == 1:
+                # A single tracked frame is an image, not a video.
+                image_url = await asyncio.to_thread(frame_to_jpeg, tracked[0])
+                media_parts.append({"type": "image_url", "image_url": {"url": image_url}})
+            else:
+                interval = session_data.get("track_sample_interval") or 0
+                fps = round(1.0 / interval) if interval > 0 else 1
+                video_url = await asyncio.to_thread(frames_to_mp4, list(tracked), fps)
+                media_parts.append({"type": "video_url", "video_url": {"url": video_url}})
+
+        if media_parts:
+            if last_role == "user":
+                # Attach to the current user turn (transcript or typed text).
+                content = history[-1].get("content")
+                if isinstance(content, str):
+                    history[-1]["content"] = media_parts + [{"type": "text", "text": content}]
+                elif isinstance(content, list):
+                    history[-1]["content"] = media_parts + content
+                else:
+                    history[-1]["content"] = media_parts
+            else:
+                # No user text for this turn — add a default prompt.
+                history.append({"role": "user",
+                                "content": media_parts + [{"type": "text",
+                                                           "text": "Please describe what you see in the attached media."}],
+                                "id": generate_id("item")})
 
     session_config = session_data["config"]
     channel = session_data.get("channel")
@@ -345,15 +453,7 @@ async def process_user_audio(audio_float32: np.ndarray,
     logging.info("[%s] User said: %s", session_id, user_text)
     sd = config.active_sessions[session_id]
     hist = sd["history"]
-    pending = sd.get("pending_media", [])
-    if pending:
-        # Combine the transcript with any held media (image/video) so they
-        # reach the model as one user turn rather than two separate messages.
-        content = pending + [{"type": "text", "text": user_text}]
-        hist.append({"role": "user", "content": content, "id": item_id})
-        pending.clear()
-    else:
-        hist.append({"role": "user", "content": user_text, "id": item_id})
+    hist.append({"role": "user", "content": user_text, "id": item_id})
     trim_history(hist)
 
     if channel_open(channel):
