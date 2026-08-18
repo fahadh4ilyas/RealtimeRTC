@@ -218,6 +218,9 @@
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex flex-col gap-3">
             <div class="flex items-center gap-2 flex-wrap">
                 <button id="cameraToggleBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors">📷 Enable Camera</button>
+                <select id="cameraSelect" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                    <option value="">Default camera</option>
+                </select>
                 <button id="uploadBtn" disabled class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed">🖼 Upload Image/Video</button>
                 <button id="pttBtn" class="hidden ml-auto px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none w-full sm:w-auto text-center" title="Hold to talk, release to send">🎤 Push to Talk</button>
                 <input type="file" id="fileInput" accept="image/*,video/*" class="hidden">
@@ -313,6 +316,7 @@
         const audioOutputCheckbox = document.getElementById('audioOutputCheckbox');
 
         const cameraToggleBtn = document.getElementById('cameraToggleBtn');
+        const cameraSelect = document.getElementById('cameraSelect');
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
         const cameraPanel = document.getElementById('cameraPanel');
@@ -1015,6 +1019,45 @@
             cameraPanel.classList.remove('flex', 'flex-col', 'gap-3');
         }
 
+        function populateCameraSelect() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            navigator.mediaDevices.enumerateDevices().then(devices => {
+                const cams = devices.filter(d => d.kind === 'videoinput');
+                const current = cameraSelect.value;
+                cameraSelect.innerHTML = '';
+                const def = document.createElement('option');
+                def.value = '';
+                def.textContent = 'Default camera';
+                cameraSelect.appendChild(def);
+                cams.forEach((c, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = c.deviceId;
+                    opt.textContent = c.label || `Camera ${i + 1}`;
+                    cameraSelect.appendChild(opt);
+                });
+                if (current && cams.some(c => c.deviceId === current)) {
+                    cameraSelect.value = current;
+                }
+            }).catch(() => {});
+        }
+
+        async function startCamera() {
+            const videoConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+            const deviceId = cameraSelect.value;
+            if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: videoConstraints,
+                audio: false
+            });
+            cameraStream = stream;
+            cameraPreview.srcObject = stream;
+            populateCameraSelect(); // refresh labels now that permission is granted
+            // If tracking, re-attach the new video track so the server keeps receiving.
+            if (tracking && videoTransceiver && videoTransceiver.sender) {
+                videoTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
+            }
+        }
+
         async function toggleCamera() {
             if (cameraStream) {
                 cameraStream.getTracks().forEach(t => t.stop());
@@ -1026,11 +1069,7 @@
                 return;
             }
             try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-                    audio: false
-                });
-                cameraPreview.srcObject = cameraStream;
+                await startCamera();
                 showCameraPanel();
                 cameraToggleBtn.textContent = '📷 Disable Camera';
                 cameraToggleBtn.classList.add('bg-red-100', 'text-red-600');
@@ -1252,6 +1291,22 @@
         }
 
         cameraToggleBtn.addEventListener('click', toggleCamera);
+        cameraSelect.addEventListener('change', async () => {
+            if (!cameraStream) return;
+            cameraStream.getTracks().forEach(t => t.stop());
+            cameraStream = null;
+            try {
+                await startCamera();
+                setMediaStatus('Camera switched');
+            } catch (err) {
+                setMediaStatus('Camera switch failed: ' + err.message);
+                cameraPreview.srcObject = null;
+            }
+        });
+        populateCameraSelect();
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', populateCameraSelect);
+        }
         uploadBtn.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => {
             onFileSelected(e.target.files[0]);
