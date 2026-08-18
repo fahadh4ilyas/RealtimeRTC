@@ -75,6 +75,11 @@ async def serve_index(request: web.Request) -> web.Response:
     return web.Response(content_type="text/html", text=content)
 
 
+async def favicon(request: web.Request) -> web.Response:
+    path = os.path.join(os.path.dirname(__file__), "html", "favicon.ico")
+    return web.FileResponse(path, headers={"Content-Type": "image/x-icon"})
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -91,6 +96,7 @@ if __name__ == "__main__":
             allow_credentials=True, expose_headers="*", allow_headers="*")})
 
     app.router.add_get("/", serve_index)
+    app.router.add_get("/favicon.ico", favicon)
     app.router.add_post("/api/upload", upload_media)
     app.router.add_post("/api/voices", get_voices)
     app.router.add_post("/api/models", get_models)
