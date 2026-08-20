@@ -29,12 +29,23 @@ async def _shutdown_peers(app):
 # REST endpoints
 # ---------------------------------------------------------------------------
 async def upload_media(request: web.Request) -> web.Response:
-    """Store uploaded media (video) and return an id for later inlining."""
+    """Store uploaded media (video) keyed by session, return an id for later use."""
+    session_id = request.query.get("session_id", "")
     data = await request.read()
     mime = request.headers.get("Content-Type", "application/octet-stream")
     media_id = generate_id("media")
-    config.uploaded_media[media_id] = {"mime": mime, "data": data}
+    config.store_media(session_id, media_id, mime, data)
     return web.json_response({"id": media_id})
+
+
+async def get_media(request: web.Request) -> web.Response:
+    """Serve an uploaded media blob so the client can play it back."""
+    session_id = request.match_info["session_id"]
+    media_id = request.match_info["media_id"]
+    entry = config.uploaded_media.get(session_id, {}).get(media_id)
+    if entry is None:
+        return web.Response(status=404, text="Media not found.")
+    return web.Response(body=entry["data"], content_type=entry["mime"])
 
 
 async def get_models(request: web.Request) -> web.Response:
@@ -98,6 +109,7 @@ if __name__ == "__main__":
     app.router.add_get("/", serve_index)
     app.router.add_get("/favicon.ico", favicon)
     app.router.add_post("/api/upload", upload_media)
+    app.router.add_get("/api/media/{session_id}/{media_id}", get_media)
     app.router.add_post("/api/voices", get_voices)
     app.router.add_post("/api/models", get_models)
     app.router.add_post("/v1/realtime/calls", handle_webrtc_offer)

@@ -337,11 +337,19 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                 content_parts.append({"type": "text",
                                                       "text": cb.get("text", "")})
                             elif cb_type == "input_image":
+                                data_url = cb.get("url", "")
+                                media_id = generate_id("media")
+                                config.store_data_url(session_id, media_id, data_url)
                                 content_parts.append({"type": "image_url",
-                                                      "image_url": {"url": cb.get("url", "")}})
+                                                      "image_url": {"url": data_url},
+                                                      "media_id": media_id})
                             elif cb_type == "input_video":
-                                content_parts.append({"type": "video_url",
-                                                      "video_url": {"url": config.resolve_media_url(cb.get("url", ""))}})
+                                media_id = cb.get("url", "")
+                                content_parts.append({
+                                    "type": "video_url",
+                                    "video_url": {"url": config.resolve_media_url(session_id, media_id)},
+                                    "media_id": media_id,
+                                })
                         if content_parts:
                             if any(p["type"] == "text" for p in content_parts):
                                 # Text present — create the user item (merges held media
