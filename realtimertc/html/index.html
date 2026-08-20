@@ -1046,6 +1046,7 @@
 
         async function toggleCamera() {
             if (cameraStream) {
+                stopTracking();
                 cameraStream.getTracks().forEach(t => t.stop());
                 cameraStream = null;
                 cameraPreview.srcObject = null;
