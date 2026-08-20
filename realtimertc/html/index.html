@@ -96,12 +96,6 @@
         </div>
         
         <div class="flex w-full sm:w-auto items-center gap-2">
-            <input 
-                type="text" 
-                id="serverUrl" 
-                class="flex-1 sm:w-80 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Server URL"
-            >
             <button
                 id="connectBtn"
                 class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm"
@@ -286,7 +280,7 @@
     </div>
 
     <script>
-        const serverUrlInput = document.getElementById('serverUrl');
+        const serverUrl = `${window.location.protocol}//${window.location.host}/v1/realtime/calls`;
         const connectBtn = document.getElementById('connectBtn');
         const disconnectBtn = document.getElementById('disconnectBtn');
         const statusDot = document.getElementById('statusDot');
@@ -345,8 +339,6 @@
         const refreshBtn = document.getElementById('refreshBtn');
         const logoutBtn = document.getElementById('logoutBtn');
         const appContent = document.getElementById('appContent');
-
-        serverUrlInput.value = `${window.location.protocol}//${window.location.host}/v1/realtime/calls`;
 
         const defaultLlmBaseUrl = '$LLM_BASE_URL$';
         const defaultTtsBaseUrl = '$TTS_BASE_URL$';
@@ -1624,7 +1616,7 @@
                     loadingSubtitle.textContent = postIceMessages[postIdx];
                 }, 2000);
 
-                const response = await fetch(serverUrlInput.value, {
+                const response = await fetch(serverUrl, {
                     method: "POST",
                     body: pc.localDescription.sdp,
                     headers: { "Content-Type": "application/sdp" }
