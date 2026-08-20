@@ -474,6 +474,7 @@
 
         let pc = null;
         let dc = null;
+        let sessionId = null;
         let localStream = null;
         let currentAiMessageNodes = null;
         let currentFunctionCallNodes = {};
@@ -1142,7 +1143,8 @@
         }
 
         async function uploadMedia(blob, mime) {
-            const res = await fetch('/api/upload', {
+            const qs = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            const res = await fetch(`/api/upload${qs}`, {
                 method: 'POST',
                 headers: { 'Content-Type': mime || blob.type || 'application/octet-stream' },
                 body: blob
@@ -1181,7 +1183,15 @@
             }
             if (videos.length) {
                 const vid = videos[0];
-                if (vid.thumbnail) {
+                if (vid.url) {
+                    const video = document.createElement('video');
+                    video.src = vid.url;
+                    video.controls = true;
+                    video.playsInline = true;
+                    if (vid.thumbnail) video.poster = vid.thumbnail;
+                    video.className = 'rounded-lg max-w-48 max-h-48';
+                    bubble.appendChild(video);
+                } else if (vid.thumbnail) {
                     const img = document.createElement('img');
                     img.src = vid.thumbnail;
                     img.className = 'rounded-lg max-w-48 max-h-48 object-cover';
@@ -1447,6 +1457,7 @@
 
                         // --- Session events ---
                         case "session.created":
+                            sessionId = msg.session && msg.session.id ? msg.session.id : null;
                             appendMessage("system", "Session established.");
                             break;
                         case "session.updated":
@@ -1637,6 +1648,7 @@
             clearInterval(postIceInterval);
             if (dc) { dc.onclose = null; dc.close(); dc = null; }
             if (pc) { pc.close(); pc = null; }
+            sessionId = null;
             if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
             if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
             cameraPreview.srcObject = null;

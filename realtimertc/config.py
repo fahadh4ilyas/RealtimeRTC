@@ -15,14 +15,35 @@ from faster_whisper import WhisperModel
 pcs = set()
 active_sessions = {}
 
-# Uploaded media (video) keyed by id, inlined into the LLM request as a base64
-# data URL because the WebRTC DataChannel is capped at 64 KB.
+# Media keyed by session then id. Every image/video — client uploads, inline
+# images, and auto-tracked frames — is stored here and served back to the
+# client via /api/media/{session_id}/{media_id}; the LLM receives it inline as
+# a base64 data URL.
 uploaded_media = {}
 
 
-def resolve_media_url(url: str) -> str:
-    """Expand a stored upload id into a base64 data URL (and free the buffer)."""
-    entry = uploaded_media.pop(url, None)
+def media_endpoint(session_id: str, media_id: str) -> str:
+    """Return the playback URL for a stored media blob."""
+    return f"/api/media/{session_id}/{media_id}"
+
+
+def store_media(session_id: str, media_id: str, mime: str, data: bytes) -> str:
+    """Store a media blob under its session and return its id."""
+    uploaded_media.setdefault(session_id, {})[media_id] = {"mime": mime, "data": data}
+    return media_id
+
+
+def store_data_url(session_id: str, media_id: str, data_url: str) -> str:
+    """Parse a base64 data URL, store its raw bytes, and return the id."""
+    head, _, b64 = data_url.partition(",")
+    mime = head.split(":", 1)[1].split(";", 1)[0] if ":" in head else "application/octet-stream"
+    uploaded_media.setdefault(session_id, {})[media_id] = {"mime": mime, "data": base64.b64decode(b64)}
+    return media_id
+
+
+def resolve_media_url(session_id: str, url: str) -> str:
+    """Expand a stored media id into a base64 data URL (kept for playback)."""
+    entry = uploaded_media.get(session_id, {}).get(url)
     if entry:
         # Keep only the bare media type — vLLM's data URL parser splits on the
         # first ';' and requires the remainder to be exactly "base64", so a

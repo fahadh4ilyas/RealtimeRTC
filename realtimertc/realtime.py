@@ -40,8 +40,8 @@ def _headers(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
-def frames_to_mp4(frames, fps):
-    """Encode a list of RGB ndarray frames into an mp4, returning a base64 data URL."""
+def _encode_mp4(frames, fps):
+    """Encode a list of RGB ndarray frames into raw mp4 bytes (or None)."""
     if not frames:
         return None
     h, w = frames[0].shape[:2]
@@ -62,11 +62,16 @@ def frames_to_mp4(frames, fps):
     for packet in stream.encode():
         container.mux(packet)
     container.close()
-    return "data:video/mp4;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+    return out.getvalue()
 
 
 def frame_to_jpeg(arr):
     """Encode a single RGB ndarray frame into a JPEG base64 data URL."""
+    return "data:image/jpeg;base64," + base64.b64encode(_encode_jpeg(arr)).decode("ascii")
+
+
+def _encode_jpeg(arr):
+    """Encode a single RGB ndarray frame into raw JPEG bytes."""
     frame = av.VideoFrame.from_ndarray(arr, format="rgb24")
     codec = av.codec.CodecContext.create("mjpeg", "w")
     codec.width = frame.width
@@ -76,7 +81,7 @@ def frame_to_jpeg(arr):
     for packet in codec.encode(frame):
         data += bytes(packet)
     data += bytes(codec.encode(None))
-    return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+    return data
 
 
 def _track_rgb_small(frame, max_dim=480):
@@ -141,7 +146,20 @@ def _media_thumbnail(data_url: str, max_dim: int = 192):
         return None
 
 
-async def _to_realtime_parts(content, is_transcription: bool) -> list:
+def _strip_media_id(history):
+    """Drop client-facing ``media_id`` fields before sending history to vLLM."""
+    messages = []
+    for m in history:
+        content = m.get("content")
+        if isinstance(content, list):
+            content = [{k: v for k, v in p.items() if k != "media_id"}
+                       for p in content]
+            m = dict(m, content=content)
+        messages.append(m)
+    return messages
+
+
+async def _to_realtime_parts(content, is_transcription: bool, session_id: str) -> list:
     """Map vLLM chat content to Realtime content parts for the emitted item."""
     parts = [{"type": "text", "text": content}] if isinstance(content, str) else content
     result = []
@@ -152,14 +170,15 @@ async def _to_realtime_parts(content, is_transcription: bool) -> list:
             else:
                 result.append({"type": "input_text", "text": p["text"]})
         elif p["type"] == "image_url":
-            thumb = await asyncio.to_thread(_media_thumbnail, p["image_url"]["url"])
+            # Every image is stored server-side and served via the endpoint, so
+            # the client can fetch the full image directly (no thumbnail).
             result.append({"type": "input_image",
-                           "url": thumb if thumb else p["image_url"]["url"]})
+                           "url": config.media_endpoint(session_id, p["media_id"])})
         elif p["type"] == "video_url":
-            # Never echo the resolved video data URL — it can far exceed the
-            # DataChannel message limit. Send a thumbnail frame instead.
+            part = {"type": "input_video",
+                    "url": config.media_endpoint(session_id, p["media_id"])}
+            # Video still gets a thumbnail as its poster/preview.
             thumb = await asyncio.to_thread(_media_thumbnail, p["video_url"]["url"])
-            part = {"type": "input_video"}
             if thumb:
                 part["thumbnail"] = thumb
             result.append(part)
@@ -189,13 +208,21 @@ async def create_user_item(session_id: str, content, item_id: str | None = None,
     if sd.get("tracking") and tracked and len(tracked) > 0:
         if len(tracked) == 1:
             # A single tracked frame is an image, not a video.
-            image_url = await asyncio.to_thread(frame_to_jpeg, tracked[0])
-            media_parts.append({"type": "image_url", "image_url": {"url": image_url}})
+            raw = await asyncio.to_thread(_encode_jpeg, tracked[0])
+            media_id = generate_id("media")
+            config.store_media(session_id, media_id, "image/jpeg", raw)
+            media_parts.append({"type": "image_url",
+                                "image_url": {"url": config.resolve_media_url(session_id, media_id)},
+                                "media_id": media_id})
         else:
             interval = sd.get("track_sample_interval") or 0
             fps = round(1.0 / interval) if interval > 0 else 1
-            video_url = await asyncio.to_thread(frames_to_mp4, list(tracked), fps)
-            media_parts.append({"type": "video_url", "video_url": {"url": video_url}})
+            raw = await asyncio.to_thread(_encode_mp4, list(tracked), fps)
+            media_id = generate_id("media")
+            config.store_media(session_id, media_id, "video/mp4", raw)
+            media_parts.append({"type": "video_url",
+                                "video_url": {"url": config.resolve_media_url(session_id, media_id)},
+                                "media_id": media_id})
 
     if media_parts:
         content = media_parts + (
@@ -209,7 +236,7 @@ async def create_user_item(session_id: str, content, item_id: str | None = None,
     channel = sd.get("channel")
     if channel_open(channel):
         item = {"id": item_id, "object": "realtime.item", "type": "message",
-                "role": "user", "content": await _to_realtime_parts(content, is_transcription)}
+                "role": "user", "content": await _to_realtime_parts(content, is_transcription, session_id)}
         if send_item_created:
             channel.send(json.dumps({
                 "type": "conversation.item.created", "event_id": generate_id(),
@@ -266,8 +293,8 @@ async def trigger_ai_response(session_id: str,
         "effort", session_config.get("reasoning", {}).get("effort", "none"))
     reasoning_kwargs = REASONING_KWARGS.get(reasoning_effort, {})
 
-    llm_payload = {"model": model_name, "messages": history, "stream": True,
-                   **reasoning_kwargs}
+    llm_payload = {"model": model_name, "messages": _strip_media_id(history),
+                   "stream": True, **reasoning_kwargs}
     if tools:
         llm_payload["tools"] = tools
 
