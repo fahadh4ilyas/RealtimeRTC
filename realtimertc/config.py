@@ -41,9 +41,9 @@ def store_data_url(session_id: str, media_id: str, data_url: str) -> str:
     return media_id
 
 
-def resolve_media_url(session_id: str, url: str) -> str:
+def resolve_media_url(session_id: str, media_id: str) -> str:
     """Expand a stored media id into a base64 data URL (kept for playback)."""
-    entry = uploaded_media.get(session_id, {}).get(url)
+    entry = uploaded_media.get(session_id, {}).get(media_id)
     if entry:
         # Keep only the bare media type — vLLM's data URL parser splits on the
         # first ';' and requires the remainder to be exactly "base64", so a
@@ -51,7 +51,7 @@ def resolve_media_url(session_id: str, url: str) -> str:
         mime = entry["mime"].split(";")[0]
         b64 = base64.b64encode(entry["data"]).decode("ascii")
         return f"data:{mime};base64,{b64}"
-    return url
+    return media_id
 
 # ---------------------------------------------------------------------------
 # Default system prompt (output goes to TTS — no markdown)
