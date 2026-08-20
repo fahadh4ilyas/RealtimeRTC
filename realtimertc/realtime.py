@@ -117,6 +117,111 @@ async def process_incoming_video(track, session_id):
 
 
 # ---------------------------------------------------------------------------
+# create_user_item — build the user history item for the current turn
+# ---------------------------------------------------------------------------
+def _media_thumbnail(data_url: str, max_dim: int = 192):
+    """Decode the first video frame of an image/video data URL and return a
+    small JPEG thumbnail data URL, or None if decoding fails."""
+    try:
+        b64 = data_url.split(",", 1)[1]
+        container = av.open(io.BytesIO(base64.b64decode(b64)))
+        try:
+            frame = next(container.decode(video=0))
+        finally:
+            container.close()
+        w, h = frame.width, frame.height
+        scale = min(1.0, max_dim / max(w, h))
+        nw = max(2, int(w * scale))
+        nh = max(2, int(h * scale))
+        nw -= nw % 2
+        nh -= nh % 2
+        arr = frame.reformat(format="rgb24", width=nw, height=nh).to_ndarray()
+        return frame_to_jpeg(arr)
+    except Exception:
+        return None
+
+
+async def _to_realtime_parts(content, is_transcription: bool) -> list:
+    """Map vLLM chat content to Realtime content parts for the emitted item."""
+    parts = [{"type": "text", "text": content}] if isinstance(content, str) else content
+    result = []
+    for p in parts:
+        if p["type"] == "text":
+            if is_transcription:
+                result.append({"type": "input_audio", "transcript": p["text"]})
+            else:
+                result.append({"type": "input_text", "text": p["text"]})
+        elif p["type"] == "image_url":
+            thumb = await asyncio.to_thread(_media_thumbnail, p["image_url"]["url"])
+            result.append({"type": "input_image",
+                           "url": thumb if thumb else p["image_url"]["url"]})
+        elif p["type"] == "video_url":
+            # Never echo the resolved video data URL — it can far exceed the
+            # DataChannel message limit. Send a thumbnail frame instead.
+            thumb = await asyncio.to_thread(_media_thumbnail, p["video_url"]["url"])
+            part = {"type": "input_video"}
+            if thumb:
+                part["thumbnail"] = thumb
+            result.append(part)
+    return result
+
+
+async def create_user_item(session_id: str, content, item_id: str | None = None,
+                           send_item_created: bool = False,
+                           previous_item_id: str | None = None,
+                           is_transcription: bool = False) -> str:
+    """Merge held attachments (pending_media) and auto-tracked frames with the
+    incoming content, append the user item to history, trim, and emit
+    conversation.item.added carrying the full content (media included). When
+    send_item_created is true, emit conversation.item.created first.
+
+    `content` is a plain string for text-only, or a list of vLLM chat parts
+    (text / image_url / video_url) for mixed content. When is_transcription is
+    true, the emitted text part is `input_audio` rather than `input_text`.
+    """
+    sd = config.active_sessions[session_id]
+    hist = sd["history"]
+
+    media_parts = list(sd.get("pending_media", []))
+    sd["pending_media"] = []
+
+    tracked = sd.get("tracked_frames")
+    if sd.get("tracking") and tracked and len(tracked) > 0:
+        if len(tracked) == 1:
+            # A single tracked frame is an image, not a video.
+            image_url = await asyncio.to_thread(frame_to_jpeg, tracked[0])
+            media_parts.append({"type": "image_url", "image_url": {"url": image_url}})
+        else:
+            interval = sd.get("track_sample_interval") or 0
+            fps = round(1.0 / interval) if interval > 0 else 1
+            video_url = await asyncio.to_thread(frames_to_mp4, list(tracked), fps)
+            media_parts.append({"type": "video_url", "video_url": {"url": video_url}})
+
+    if media_parts:
+        content = media_parts + (
+            [{"type": "text", "text": content}] if isinstance(content, str) else content
+        )
+
+    item_id = item_id or generate_id("item")
+    hist.append({"role": "user", "content": content, "id": item_id})
+    trim_history(hist)
+
+    channel = sd.get("channel")
+    if channel_open(channel):
+        item = {"id": item_id, "object": "realtime.item", "type": "message",
+                "role": "user", "content": await _to_realtime_parts(content, is_transcription)}
+        if send_item_created:
+            channel.send(json.dumps({
+                "type": "conversation.item.created", "event_id": generate_id(),
+                "previous_item_id": previous_item_id, "item": item}))
+        channel.send(json.dumps({
+            "type": "conversation.item.added", "event_id": generate_id(),
+            "item": item}))
+
+    return item_id
+
+
+# ---------------------------------------------------------------------------
 # trigger_ai_response — stream LLM output through TTS back to the client
 # ---------------------------------------------------------------------------
 async def trigger_ai_response(session_id: str,
@@ -127,44 +232,18 @@ async def trigger_ai_response(session_id: str,
         return
 
     history = session_data["history"]
-    # Collect all media for this turn — held attachments (pending_media) plus
-    # the auto-tracked frames — and attach them to the current user message.
-    # Skip this entirely when the last message is a tool result: that's a
-    # function-call continuation, not a fresh user turn, so any held media
-    # belongs to the next user question and must be left undisturbed.
+    # create_user_item already merged held media + tracked frames into the
+    # user turn. Only the media-only case (attachments with no text) still
+    # needs a user item here: add a default prompt. Skip a tool result — a
+    # function-call continuation must leave any held media undisturbed.
     last_role = history[-1].get("role") if history else None
-    if last_role != "tool":
-        media_parts = list(session_data.get("pending_media", []))
-        session_data["pending_media"] = []
-
-        tracked = session_data.get("tracked_frames")
-        if session_data.get("tracking") and tracked and len(tracked) > 0:
-            if len(tracked) == 1:
-                # A single tracked frame is an image, not a video.
-                image_url = await asyncio.to_thread(frame_to_jpeg, tracked[0])
-                media_parts.append({"type": "image_url", "image_url": {"url": image_url}})
-            else:
-                interval = session_data.get("track_sample_interval") or 0
-                fps = round(1.0 / interval) if interval > 0 else 1
-                video_url = await asyncio.to_thread(frames_to_mp4, list(tracked), fps)
-                media_parts.append({"type": "video_url", "video_url": {"url": video_url}})
-
-        if media_parts:
-            if last_role == "user":
-                # Attach to the current user turn (transcript or typed text).
-                content = history[-1].get("content")
-                if isinstance(content, str):
-                    history[-1]["content"] = media_parts + [{"type": "text", "text": content}]
-                elif isinstance(content, list):
-                    history[-1]["content"] = media_parts + content
-                else:
-                    history[-1]["content"] = media_parts
-            else:
-                # No user text for this turn — add a default prompt.
-                history.append({"role": "user",
-                                "content": media_parts + [{"type": "text",
-                                                           "text": "Please describe what you see in the attached media."}],
-                                "id": generate_id("item")})
+    if last_role not in ("tool", "user"):
+        has_media = bool(session_data.get("pending_media")) or (
+            session_data.get("tracking") and session_data.get("tracked_frames"))
+        if has_media:
+            await create_user_item(
+                session_id,
+                "Please describe what you see in the attached media.")
 
     session_config = session_data["config"]
     channel = session_data.get("channel")
@@ -451,20 +530,13 @@ async def process_user_audio(audio_float32: np.ndarray,
         return
 
     logging.info("[%s] User said: %s", session_id, user_text)
-    sd = config.active_sessions[session_id]
-    hist = sd["history"]
-    hist.append({"role": "user", "content": user_text, "id": item_id})
-    trim_history(hist)
 
     if channel_open(channel):
         channel.send(json.dumps({
             "type": "conversation.item.input_audio_transcription.completed",
             "event_id": generate_id(), "item_id": item_id, "transcript": user_text}))
-        channel.send(json.dumps({
-            "type": "conversation.item.added", "event_id": generate_id(),
-            "item": {"id": item_id, "object": "realtime.item", "type": "message",
-                     "role": "user",
-                     "content": [{"type": "input_audio", "transcript": user_text}]}}))
+
+    await create_user_item(session_id, user_text, item_id=item_id, is_transcription=True)
 
     if auto_trigger:
         sd = config.active_sessions[session_id]
