@@ -219,7 +219,7 @@
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex flex-col gap-3">
             <div class="flex items-center gap-2 flex-wrap">
                 <button id="cameraToggleBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors">📷 Enable Camera</button>
-                <select id="cameraSelect" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
+                <select id="cameraSelect" class="hidden px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
                     <option value="">Default camera</option>
                 </select>
                 <button id="uploadBtn" disabled class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed">🖼 Upload Image/Video</button>
@@ -1065,6 +1065,7 @@
                 cameraStream = null;
                 cameraPreview.srcObject = null;
                 hideCameraPanel();
+                cameraSelect.classList.add('hidden');
                 cameraToggleBtn.textContent = '📷 Enable Camera';
                 cameraToggleBtn.classList.remove('bg-red-100', 'text-red-600');
                 return;
@@ -1072,6 +1073,7 @@
             try {
                 await startCamera();
                 showCameraPanel();
+                cameraSelect.classList.remove('hidden');
                 cameraToggleBtn.textContent = '📷 Disable Camera';
                 cameraToggleBtn.classList.add('bg-red-100', 'text-red-600');
             } catch (err) {
@@ -1651,6 +1653,7 @@
             if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
             cameraPreview.srcObject = null;
             hideCameraPanel();
+            cameraSelect.classList.add('hidden');
             cameraToggleBtn.textContent = '📷 Enable Camera';
             cameraToggleBtn.classList.remove('bg-red-100', 'text-red-600');
             pendingMedia = [];
