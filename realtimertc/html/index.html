@@ -742,10 +742,6 @@
             pendingMedia.forEach(p => content.push(p));
             if (text) content.push({ type: 'input_text', text: text });
 
-            // Optimistic render (media above text); the server echo for text/media is skipped.
-            if (pendingMedia.length) appendUserMedia(content);
-            else appendMessage("user", text);
-
             // Cancel any in-progress AI response (barge-in)
             dc.send(JSON.stringify({ type: "response.cancel" }));
             dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
@@ -979,9 +975,6 @@
             try {
                 updateAttachmentUI();
 
-                // Render the frames optimistically; the transcript arrives via echo after.
-                appendUserMedia(parts);
-
                 if (parts.length <= 1) {
                     dc.send(JSON.stringify({
                         type: 'conversation.item.create',
@@ -1159,8 +1152,8 @@
             return data.id;
         }
 
-        function appendUserMedia(content) {
-            const textPart = content.find(c => c.type === 'input_text');
+        function appendUserMessage(content) {
+            const textPart = content.find(c => c.type === 'input_text' || c.type === 'input_audio');
             const images = content.filter(c => c.type === 'input_image');
             const videos = content.filter(c => c.type === 'input_video');
 
@@ -1187,6 +1180,13 @@
                 }
             }
             if (videos.length) {
+                const vid = videos[0];
+                if (vid.thumbnail) {
+                    const img = document.createElement('img');
+                    img.src = vid.thumbnail;
+                    img.className = 'rounded-lg max-w-48 max-h-48 object-cover';
+                    bubble.appendChild(img);
+                }
                 const v = document.createElement('div');
                 v.className = 'text-xs opacity-90';
                 v.innerText = '🎬 Video clip';
@@ -1195,7 +1195,9 @@
             if (textPart) {
                 const t = document.createElement('div');
                 t.className = 'whitespace-pre-wrap leading-relaxed break-words';
-                t.innerText = textPart.text;
+                t.innerText = textPart.type === 'input_audio'
+                    ? `🎤 ${textPart.transcript}`
+                    : textPart.text;
                 bubble.appendChild(t);
             }
 
@@ -1475,12 +1477,7 @@
                             break;
                         case "conversation.item.added":
                             if (msg.item && msg.item.role === "user") {
-                                // Only audio transcription is rendered here; text and
-                                // media are rendered optimistically at send time.
-                                const content = msg.item.content || [];
-                                if (content[0] && content[0].type === "input_audio") {
-                                    appendMessage("user", `🎤 ${content[0].transcript}`, false, msg.item.id);
-                                }
+                                appendUserMessage(msg.item.content || []);
                             } else if (msg.item && msg.item.role === "tool") {
                                 appendMessage("tool_result", `🛠️ ${msg.item.content}`);
                             } else if (msg.item && msg.item.type === "function_call_output") {
@@ -1496,7 +1493,7 @@
                             }
                             break;
                         case "conversation.item.input_audio_transcription.completed":
-                            // Transcription completed (transcript shown via conversation.item.added)
+                            // Transcript rendered via conversation.item.added (input_audio).
                             processingIndicator.classList.add('hidden');
                             break;
                         case "conversation.item.input_audio_transcription.failed":

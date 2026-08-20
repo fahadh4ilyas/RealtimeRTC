@@ -20,6 +20,7 @@ from silero_vad_lite import SileroVAD
 from realtimertc import config
 from realtimertc.audio import LocalAIAudioTrack
 from realtimertc.realtime import (
+    create_user_item,
     process_incoming_audio,
     process_incoming_video,
     trigger_ai_response,
@@ -343,40 +344,42 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                                       "video_url": {"url": config.resolve_media_url(cb.get("url", ""))}})
                         if content_parts:
                             if any(p["type"] == "text" for p in content_parts):
-                                # Text present — append immediately (text + any media
-                                # that arrived in the same message).
+                                # Text present — create the user item (merges held media
+                                # and tracked frames asynchronously).
                                 if len(content_parts) == 1 and content_parts[0]["type"] == "text":
                                     content = content_parts[0]["text"]
                                 else:
                                     content = content_parts
-                                hist.append({"role": "user", "content": content,
-                                             "id": item.get("id", generate_id("item"))})
-                                trim_history(hist)
+                                config.active_sessions[session_id]["user_item_task"] = \
+                                    asyncio.create_task(create_user_item(
+                                        session_id, content,
+                                        item_id=item.get("id") or generate_id("item"),
+                                        send_item_created=True,
+                                        previous_item_id=event.get("previous_item_id")))
                             else:
                                 # Media-only — hold it; merged with the current turn
                                 # in trigger_ai_response.
                                 config.active_sessions[session_id]["pending_media"].extend(content_parts)
 
                     elif item.get("type") == "function_call_output":
+                        item["id"] = item.get("id") or generate_id("item")
                         hist.append({
                             "role": "tool",
                             "tool_call_id": item.get("call_id"),
                             "content": item.get("output"),
-                            "id": item.get("id", generate_id("item")),
+                            "id": item["id"],
                         })
                         trim_history(hist)
+                        item["object"] = "realtime.item"
 
-                    if not item.get("id"):
-                        item["id"] = generate_id("item")
-                    item["object"] = "realtime.item"
+                        channel.send(json.dumps({"type": "conversation.item.created",
+                                                 "event_id": generate_id(),
+                                                 "previous_item_id": event.get("previous_item_id"),
+                                                 "item": item}))
+                        channel.send(json.dumps({"type": "conversation.item.added",
+                                                 "event_id": generate_id(),
+                                                 "item": item}))
 
-                    channel.send(json.dumps({"type": "conversation.item.created",
-                                             "event_id": generate_id(),
-                                             "previous_item_id": event.get("previous_item_id"),
-                                             "item": item}))
-                    channel.send(json.dumps({"type": "conversation.item.added",
-                                             "event_id": generate_id(),
-                                             "item": item}))
 
                 # ======================================================
                 # conversation.item.retrieve / delete / truncate
@@ -502,6 +505,15 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
                                 pass
                             except Exception as exc:
                                 logging.error("[%s] Transcription failed: %s", session_id, exc)
+                        # Wait for a pending user item (typed text merging media).
+                        user_item = sd.get("user_item_task")
+                        if user_item and not user_item.done():
+                            try:
+                                await user_item
+                            except asyncio.CancelledError:
+                                pass
+                            except Exception as exc:
+                                logging.error("[%s] User item failed: %s", session_id, exc)
                         await trigger_ai_response(session_id, local_audio, resp_cfg)
 
                     config.active_sessions[session_id]["response_task"] = asyncio.create_task(
