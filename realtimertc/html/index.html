@@ -154,7 +154,7 @@
 
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Additional System Instructions</label>
-                    <input type="text" id="instructionsInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md" placeholder="e.g., 'Speak like a pirate' or 'Respond in Spanish'">
+                    <textarea id="instructionsInput" rows="3" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="e.g., 'Speak like a pirate' or 'Respond in Spanish'"></textarea>
                 </div>
 
                 <div>
@@ -232,7 +232,7 @@
             <div class="flex gap-2 items-end px-4 pt-4 pb-2">
                 <textarea
                     id="textInput"
-                    rows="1"
+                    rows="3"
                     class="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm resize-none"
                     placeholder="Type a message and press Enter…"
                     disabled
