@@ -118,13 +118,6 @@
                 Connect
             </button>
             <button
-                id="refreshBtn"
-                disabled
-                class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-md transition-colors border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                🔄 Refresh
-            </button>
-            <button
                 id="disconnectBtn"
                 class="px-4 py-2 bg-red-100 text-red-600 hover:bg-red-200 text-sm font-semibold rounded-md transition-colors hidden"
             >
@@ -165,6 +158,10 @@
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Voice</label>
                     <select id="voiceInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white"></select>
                 </div>
+
+                <button id="refreshBtn" disabled class="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-md transition-colors border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
+                    🔄 Refresh Models & Voices
+                </button>
 
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Turn Detection Mode</label>
@@ -229,18 +226,22 @@
 
             <!-- Text input bar -->
             <div class="flex gap-2 items-end px-4 pt-4 pb-2">
-                <textarea
-                    id="textInput"
-                    rows="3"
-                    class="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm resize-none"
-                    placeholder="Type a message and press Enter…"
-                    disabled
-                ></textarea>
-                <button id="uploadBtn" disabled class="px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">🖼 Upload Image/Video</button>
+                <div class="relative flex-1">
+                    <textarea
+                        id="textInput"
+                        rows="3"
+                        class="w-full px-4 pt-3 pb-8 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm resize-none"
+                        placeholder="Type a message and press Enter…"
+                        disabled
+                    ></textarea>
+                    <button id="uploadBtn" disabled class="absolute left-2 bottom-1.5 p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Upload image or video" title="Upload image or video">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16M4 12h16"></path></svg>
+                    </button>
+                </div>
                 <input type="file" id="fileInput" accept="image/*,video/*" class="hidden">
                 <button
                     id="sendTextBtn"
-                    class="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+                    class="self-stretch px-5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
                     disabled
                 >
                     Send
@@ -477,7 +478,7 @@
                 appendMessage("system", err.message, true);
             } finally {
                 refreshBtn.disabled = false;
-                refreshBtn.textContent = '🔄 Refresh';
+                refreshBtn.textContent = '🔄 Refresh Models & Voices';
             }
         }
 
