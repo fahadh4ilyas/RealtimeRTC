@@ -78,7 +78,7 @@
     </div>
 
     <!-- App content (revealed after login) -->
-    <div id="appContent" class="hidden">
+    <div id="appContent" class="hidden flex-1 flex flex-col min-h-0">
 
     <!-- Top Navigation / Connection Bar -->
     <header class="bg-white border-b border-gray-200 shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center justify-between z-10">
@@ -125,33 +125,27 @@
         </div>
     </header>
 
-    <!-- Session Settings Drawer -->
-    <div class="bg-white border-b border-gray-200 px-4 py-3 z-0">
-        <details class="group max-w-4xl mx-auto">
-            <summary class="text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-1">
-                <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                Session Settings & Configuration
-            </summary>
-            
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 border border-gray-100 bg-gray-50 rounded-lg p-4 shadow-inner">
-                
-                <div class="md:col-span-2">
+    <!-- 3-column body -->
+    <div class="flex-1 flex min-h-0">
+
+        <!-- Left: Session Settings -->
+        <aside class="w-72 shrink-0 border-r border-gray-200 bg-white overflow-y-auto p-4">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Session Settings</h2>
+            <div class="flex flex-col gap-4">
+
+                <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Additional System Instructions</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="instructionsInput" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md" placeholder="e.g., 'Speak like a pirate' or 'Respond in Spanish'">
-                    </div>
+                    <input type="text" id="instructionsInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md" placeholder="e.g., 'Speak like a pirate' or 'Respond in Spanish'">
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Model</label>
-                    <select id="modelInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
-                        </select>
+                    <select id="modelInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white"></select>
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Voice</label>
-                    <select id="voiceInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
-                        </select>
+                    <select id="voiceInput" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white"></select>
                 </div>
 
                 <div>
@@ -174,108 +168,107 @@
                     </select>
                 </div>
 
-                <div class="flex gap-4">
-                    <div class="flex-1">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">VAD Threshold</label>
-                        <input type="number" id="vadThreshold" value="0.3" step="0.1" min="0.1" max="1.0" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
-                    </div>
-                    <div class="flex-1">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Silence Limit (ms)</label>
-                        <input type="number" id="vadSilence" value="500" step="100" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
-                    </div>
-                    <div class="flex-1">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Prefix Padding (ms)</label>
-                        <input type="number" id="vadPrefixPadding" value="800" step="10" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
-                    </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">VAD Threshold</label>
+                    <input type="number" id="vadThreshold" value="0.3" step="0.1" min="0.1" max="1.0" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
                 </div>
 
-                <div class="flex items-end pb-2">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="audioOutputCheckbox" checked class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
-                        <span class="text-xs font-semibold text-gray-600">Audio Output</span>
-                    </label>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Silence Limit (ms)</label>
+                    <input type="number" id="vadSilence" value="500" step="100" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
                 </div>
 
-                <div class="md:col-span-2 mt-2">
-                    <button id="updateSessionBtn" class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors shadow-sm">
-                        Apply Settings to Session
-                    </button>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Prefix Padding (ms)</label>
+                    <input type="number" id="vadPrefixPadding" value="800" step="10" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
+                </div>
+
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="audioOutputCheckbox" checked class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <span class="text-xs font-semibold text-gray-600">Audio Output</span>
+                </label>
+
+                <button id="updateSessionBtn" class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors shadow-sm">
+                    Apply Settings to Session
+                </button>
+            </div>
+        </aside>
+
+        <!-- Middle: Chat -->
+        <section class="flex-1 flex flex-col min-w-0">
+
+            <div id="chatHistory" class="flex-1 overflow-y-auto bg-white rounded-xl shadow-sm border border-gray-100 m-4 p-6 flex flex-col gap-5">
+                <div class="text-center text-gray-400 text-sm mt-10">
+                    Connect and start speaking to interact with the AI.
                 </div>
             </div>
-        </details>
-    </div>
 
-    <!-- Main Interface -->
-    <main class="flex-1 overflow-hidden flex flex-col max-w-4xl w-full mx-auto p-4 gap-4">
+            <div id="attachmentArea" class="hidden flex items-center gap-2 flex-wrap px-4">
+                <img id="attachmentThumb" class="hidden w-12 h-12 rounded-lg object-cover bg-gray-100">
+                <span id="attachmentCount" class="text-xs font-semibold text-gray-600"></span>
+                <button id="clearAttachmentsBtn" class="px-3 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors">Remove</button>
+            </div>
 
-        <!-- Media / Camera controls -->
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex flex-col gap-3">
-            <div class="flex items-center gap-2 flex-wrap">
+            <!-- Text input bar -->
+            <div class="flex gap-2 items-end p-4">
+                <textarea
+                    id="textInput"
+                    rows="1"
+                    class="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm resize-none"
+                    placeholder="Type a message and press Enter…"
+                    disabled
+                ></textarea>
+                <button id="uploadBtn" disabled class="px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">🖼 Upload Image/Video</button>
+                <input type="file" id="fileInput" accept="image/*,video/*" class="hidden">
+                <button
+                    id="sendTextBtn"
+                    class="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+                    disabled
+                >
+                    Send
+                </button>
+            </div>
+        </section>
+
+        <!-- Right: Camera -->
+        <aside class="w-80 shrink-0 border-l border-gray-200 bg-white overflow-y-auto p-4">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Camera</h2>
+
+            <div class="flex items-center gap-2 flex-wrap mb-2">
                 <button id="cameraToggleBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors">📷 Enable Camera</button>
                 <select id="cameraSelect" class="hidden px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
                     <option value="">Default camera</option>
                 </select>
-                <button id="uploadBtn" disabled class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed">🖼 Upload Image/Video</button>
-                <button id="pttBtn" class="hidden ml-auto px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none w-full sm:w-auto text-center" title="Hold to talk, release to send">🎤 Push to Talk</button>
-                <input type="file" id="fileInput" accept="image/*,video/*" class="hidden">
             </div>
 
-            <div id="mediaStatus" class="text-xs text-gray-500 min-h-[1rem]"></div>
+            <div id="mediaStatus" class="text-xs text-gray-500 min-h-[1rem] mb-3"></div>
 
             <div id="cameraPanel" class="hidden">
-                <div class="flex items-center gap-3 flex-wrap mb-2">
+                <div class="flex flex-col gap-2 mb-2">
                     <select id="captureMode" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white">
                         <option value="snapshot">Single frame</option>
                         <option value="frames">Multi frames</option>
                         <option value="video">Video duration</option>
                         <option value="track">Auto Track</option>
                     </select>
-                    <div id="durationWrap" class="hidden flex items-center gap-2 flex-1 min-w-[200px]">
-                        <span class="text-xs font-semibold text-gray-600">Duration</span>
+                    <div id="durationWrap" class="hidden flex items-center gap-2">
+                        <span class="text-xs font-semibold text-gray-600 w-16">Duration</span>
                         <input type="range" id="durationSlider" min="1" max="10" step="1" value="3" class="flex-1 accent-blue-600">
                         <span id="durationLabel" class="text-xs font-semibold text-gray-600 w-8">3s</span>
                     </div>
-                    <div id="framesWrap" class="hidden flex items-center gap-2 flex-1 min-w-[200px]">
-                        <span class="text-xs font-semibold text-gray-600">Frames</span>
+                    <div id="framesWrap" class="hidden flex items-center gap-2">
+                        <span class="text-xs font-semibold text-gray-600 w-16">Frames</span>
                         <input type="range" id="framesSlider" min="1" max="30" step="1" value="6" class="flex-1 accent-blue-600">
                         <span id="framesLabel" class="text-xs font-semibold text-gray-600 w-8">6</span>
                     </div>
                 </div>
                 <video id="cameraPreview" autoplay playsinline muted class="w-full max-h-64 bg-black rounded-lg"></video>
-                <button id="attachBtn" disabled class="mt-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm self-end disabled:opacity-50 disabled:cursor-not-allowed">📎 Attach frame</button>
+                <button id="attachBtn" disabled class="mt-2 w-full px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">📎 Attach frame</button>
             </div>
-        </div>
 
-        <div id="chatHistory" class="flex-1 overflow-y-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-5">
-            <div class="text-center text-gray-400 text-sm mt-10">
-                Connect and start speaking to interact with the AI.
-            </div>
-        </div>
-
-        <div id="attachmentArea" class="hidden flex items-center gap-2 flex-wrap">
-            <img id="attachmentThumb" class="hidden w-12 h-12 rounded-lg object-cover bg-gray-100">
-            <span id="attachmentCount" class="text-xs font-semibold text-gray-600"></span>
-            <button id="clearAttachmentsBtn" class="px-3 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors">Remove</button>
-        </div>
-
-        <!-- Text input bar -->
-        <div class="flex gap-2 items-end">
-            <textarea
-                id="textInput"
-                rows="1"
-                class="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm resize-none"
-                placeholder="Type a message and press Enter…"
-                disabled
-            ></textarea>
-            <button
-                id="sendTextBtn"
-                class="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
-                disabled
-            >
-                Send
-            </button>
-        </div>
-    </main>
+            <button id="pttBtn" class="hidden mt-3 w-full px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none text-center" title="Hold to talk, release to send">🎤 Push to Talk</button>
+        </aside>
+    </div>
 
     </div>
 
