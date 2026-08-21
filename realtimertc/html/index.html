@@ -22,6 +22,15 @@
             to { transform: rotate(360deg); }
         }
         .animate-spin { animation: spin 0.8s linear infinite; }
+
+        /* Mobile side drawers — off-canvas until `.open`, static columns on lg+ */
+        #settingsSidebar, #cameraSidebar { transition: transform 0.25s ease-in-out; }
+        #settingsSidebar { transform: translateX(-100%); }
+        #cameraSidebar { transform: translateX(100%); }
+        #settingsSidebar.open, #cameraSidebar.open { transform: translateX(0); }
+        @media (min-width: 1024px) {
+            #settingsSidebar, #cameraSidebar { transform: none !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans antialiased">
@@ -83,6 +92,9 @@
     <!-- Top Navigation / Connection Bar -->
     <header class="bg-white border-b border-gray-200 shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center justify-between z-10">
         <div class="flex items-center gap-3">
+            <button id="menuBtn" class="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors" aria-label="Open settings">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
             <div id="statusDot" class="w-3 h-3 rounded-full bg-red-500 transition-colors"></div>
             <h1 class="font-bold text-lg text-gray-700">Realtime AI</h1>
             <div id="speechIndicator" class="hidden flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
@@ -96,6 +108,9 @@
         </div>
         
         <div class="flex w-full sm:w-auto items-center gap-2">
+            <button id="cameraDrawerBtn" class="lg:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors" aria-label="Open camera">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
             <button
                 id="connectBtn"
                 class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm"
@@ -129,8 +144,11 @@
     <div class="flex-1 flex min-h-0">
 
         <!-- Left: Session Settings -->
-        <aside class="w-72 shrink-0 border-r border-gray-200 bg-white overflow-y-auto p-4">
-            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Session Settings</h2>
+        <aside id="settingsSidebar" class="fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] border-r border-gray-200 bg-white overflow-y-auto p-4 lg:static lg:inset-auto lg:z-auto lg:shrink-0 lg:max-w-none">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Session Settings</h2>
+                <button id="closeSettingsBtn" class="lg:hidden p-1 text-gray-500 hover:bg-gray-100 rounded-md" aria-label="Close settings">✕</button>
+            </div>
             <div class="flex flex-col gap-4">
 
                 <div>
@@ -195,7 +213,7 @@
         </aside>
 
         <!-- Middle: Chat -->
-        <section class="flex-1 flex flex-col min-w-0">
+        <section id="chatSection" class="flex-1 flex flex-col min-w-0">
 
             <div id="chatHistory" class="flex-1 overflow-y-auto bg-white rounded-xl shadow-sm border border-gray-100 m-4 p-6 flex flex-col gap-5">
                 <div class="text-center text-gray-400 text-sm mt-10">
@@ -210,7 +228,7 @@
             </div>
 
             <!-- Text input bar -->
-            <div class="flex gap-2 items-end p-4">
+            <div class="flex gap-2 items-end px-4 pt-4 pb-2">
                 <textarea
                     id="textInput"
                     rows="1"
@@ -228,11 +246,16 @@
                     Send
                 </button>
             </div>
+
+            <button id="pttBtn" class="hidden mx-4 mb-4 px-5 py-3 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-xl shadow-md transition-all select-none touch-none text-center" title="Hold to talk, release to send">🎤 Push to Talk</button>
         </section>
 
         <!-- Right: Camera -->
-        <aside class="w-80 shrink-0 border-l border-gray-200 bg-white overflow-y-auto p-4">
-            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Camera</h2>
+        <aside id="cameraSidebar" class="fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] border-l border-gray-200 bg-white overflow-y-auto p-4 lg:static lg:inset-auto lg:z-auto lg:shrink-0 lg:max-w-none">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Camera</h2>
+                <button id="closeCameraBtn" class="lg:hidden p-1 text-gray-500 hover:bg-gray-100 rounded-md" aria-label="Close camera">✕</button>
+            </div>
 
             <div class="flex items-center gap-2 flex-wrap mb-2">
                 <button id="cameraToggleBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-semibold rounded-md transition-colors">📷 Enable Camera</button>
@@ -265,10 +288,11 @@
                 <video id="cameraPreview" autoplay playsinline muted class="w-full max-h-64 bg-black rounded-lg"></video>
                 <button id="attachBtn" disabled class="mt-2 w-full px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">📎 Attach frame</button>
             </div>
-
-            <button id="pttBtn" class="hidden mt-3 w-full px-5 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 active:scale-95 text-white font-bold rounded-full shadow-md transition-all select-none touch-none text-center" title="Hold to talk, release to send">🎤 Push to Talk</button>
         </aside>
     </div>
+
+    <!-- Mobile drawer backdrop -->
+    <div id="sidebarBackdrop" class="hidden fixed inset-0 z-30 bg-black/40 lg:hidden"></div>
 
     </div>
 
@@ -318,6 +342,15 @@
         const attachBtn = document.getElementById('attachBtn');
         const mediaStatus = document.getElementById('mediaStatus');
         const attachmentArea = document.getElementById('attachmentArea');
+
+        const settingsSidebar = document.getElementById('settingsSidebar');
+        const cameraSidebar = document.getElementById('cameraSidebar');
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+        const menuBtn = document.getElementById('menuBtn');
+        const cameraDrawerBtn = document.getElementById('cameraDrawerBtn');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const closeCameraBtn = document.getElementById('closeCameraBtn');
+        const chatSection = document.getElementById('chatSection');
         const attachmentThumb = document.getElementById('attachmentThumb');
         const attachmentCount = document.getElementById('attachmentCount');
         const clearAttachmentsBtn = document.getElementById('clearAttachmentsBtn');
@@ -655,7 +688,7 @@
 
         const startRecording = (e) => {
             e.preventDefault();
-            
+
             // Ignore right-clicks or middle-clicks on desktop
             if (e.pointerType === 'mouse' && e.button !== 0) return;
 
@@ -669,7 +702,7 @@
 
         const stopRecording = (e) => {
             e.preventDefault();
-            
+
             // Only trigger the send logic if the button was actually in the recording state (red)
             if (pttBtn.classList.contains('bg-red-500') && dc && dc.readyState === 'open') {
                 sendPendingMedia(); // flush attached frames with this push-to-talk turn
@@ -688,7 +721,7 @@
         window.addEventListener('keydown', (e) => {
             // 1. Ignore if the user is typing in a text box or interacting with a dropdown
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-            
+
             // 2. Check if it's the Spacebar, ignore OS key-repeat spam, and ensure PTT mode is active
             if (e.code === 'Space' && !e.repeat && !pttBtn.classList.contains('hidden')) {
                 e.preventDefault(); // Prevent the page from scrolling down
@@ -705,7 +738,7 @@
             }
         });
 
-        // 3. Absolute Failsafe: If the user holds space, but clicks away to another window, 
+        // 3. Absolute Failsafe: If the user holds space, but clicks away to another window,
         // the browser will never fire the 'keyup' event. This ensures the AI isn't stuck listening forever.
         window.addEventListener('blur', (e) => {
             if (pttBtn.classList.contains('bg-red-500')) {
@@ -1289,6 +1322,44 @@
                 alert('Unsupported file type.');
             }
         }
+
+        // Mobile side drawers (settings left, camera right)
+        function openSidebar(which) {
+            settingsSidebar.classList.toggle('open', which === 'settings');
+            cameraSidebar.classList.toggle('open', which === 'camera');
+            sidebarBackdrop.classList.remove('hidden');
+        }
+        function closeSidebars() {
+            settingsSidebar.classList.remove('open');
+            cameraSidebar.classList.remove('open');
+            sidebarBackdrop.classList.add('hidden');
+        }
+        menuBtn.addEventListener('click', () => {
+            if (settingsSidebar.classList.contains('open')) closeSidebars();
+            else openSidebar('settings');
+        });
+        cameraDrawerBtn.addEventListener('click', () => {
+            if (cameraSidebar.classList.contains('open')) closeSidebars();
+            else openSidebar('camera');
+        });
+        closeSettingsBtn.addEventListener('click', closeSidebars);
+        closeCameraBtn.addEventListener('click', closeSidebars);
+        sidebarBackdrop.addEventListener('click', closeSidebars);
+
+        // Swipe gestures on the chat area: right → settings, left → camera
+        let touchStartX = 0, touchStartY = 0;
+        chatSection.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        chatSection.addEventListener('touchend', (e) => {
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            const dy = e.changedTouches[0].clientY - touchStartY;
+            if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 0) openSidebar('settings');
+                else openSidebar('camera');
+            }
+        }, { passive: true });
 
         cameraToggleBtn.addEventListener('click', toggleCamera);
         cameraSelect.addEventListener('change', async () => {
