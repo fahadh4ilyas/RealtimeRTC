@@ -34,7 +34,9 @@ async def upload_media(request: web.Request) -> web.Response:
     data = await request.read()
     mime = request.headers.get("Content-Type", "application/octet-stream")
     media_id = generate_id("media")
-    config.store_media(session_id, media_id, mime, data)
+    media_id = config.store_media(session_id, media_id, mime, data)
+    if media_id is None:
+        return web.Response(status=404, text="Session not found.")
     return web.json_response({"id": media_id})
 
 
@@ -42,7 +44,7 @@ async def get_media(request: web.Request) -> web.Response:
     """Serve an uploaded media blob so the client can play it back."""
     session_id = request.match_info["session_id"]
     media_id = request.match_info["media_id"]
-    entry = config.uploaded_media.get(session_id, {}).get(media_id)
+    entry = config.get_media(session_id, media_id)
     if entry is None:
         return web.Response(status=404, text="Media not found.")
     return web.Response(body=entry["data"], content_type=entry["mime"])

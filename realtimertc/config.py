@@ -15,21 +15,18 @@ from faster_whisper import WhisperModel
 pcs = set()
 active_sessions = {}
 
-# Media keyed by session then id. Every image/video — client uploads, inline
-# images, and auto-tracked frames — is stored here and served back to the
-# client via /api/media/{session_id}/{media_id}; the LLM receives it inline as
-# a base64 data URL.
-uploaded_media = {}
-
 
 def media_endpoint(session_id: str, media_id: str) -> str:
     """Return the playback URL for a stored media blob."""
     return f"/api/media/{session_id}/{media_id}"
 
 
-def store_media(session_id: str, media_id: str, mime: str, data: bytes) -> str:
+def store_media(session_id: str, media_id: str, mime: str, data: bytes) -> str | None:
     """Store a media blob under its session and return its id."""
-    uploaded_media.setdefault(session_id, {})[media_id] = {"mime": mime, "data": data}
+    if session_id not in active_sessions:
+        return
+    uploaded_media = active_sessions[session_id]['uploaded_media']
+    uploaded_media[media_id] = {"mime": mime, "data": data}
     return media_id
 
 
@@ -37,13 +34,17 @@ def store_data_url(session_id: str, media_id: str, data_url: str) -> str:
     """Parse a base64 data URL, store its raw bytes, and return the id."""
     head, _, b64 = data_url.partition(",")
     mime = head.split(":", 1)[1].split(";", 1)[0] if ":" in head else "application/octet-stream"
-    uploaded_media.setdefault(session_id, {})[media_id] = {"mime": mime, "data": base64.b64decode(b64)}
+    uploaded_media = active_sessions[session_id]['uploaded_media']
+    uploaded_media[media_id] = {"mime": mime, "data": base64.b64decode(b64)}
     return media_id
 
 
 def resolve_media_url(session_id: str, media_id: str) -> str:
     """Expand a stored media id into a base64 data URL (kept for playback)."""
-    entry = uploaded_media.get(session_id, {}).get(media_id)
+    if session_id not in active_sessions:
+        return media_id
+    uploaded_media = active_sessions[session_id]['uploaded_media']
+    entry = uploaded_media.get(media_id)
     if entry:
         # Keep only the bare media type — vLLM's data URL parser splits on the
         # first ';' and requires the remainder to be exactly "base64", so a
@@ -52,6 +53,13 @@ def resolve_media_url(session_id: str, media_id: str) -> str:
         b64 = base64.b64encode(entry["data"]).decode("ascii")
         return f"data:{mime};base64,{b64}"
     return media_id
+
+
+def get_media(session_id: str, media_id: str):
+    if session_id not in active_sessions:
+        return
+    uploaded_media = active_sessions[session_id]['uploaded_media']
+    return uploaded_media.get(media_id)
 
 # ---------------------------------------------------------------------------
 # Default system prompt (output goes to TTS — no markdown)

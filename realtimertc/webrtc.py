@@ -67,6 +67,7 @@ async def handle_webrtc_offer(request: web.Request) -> web.Response:
         "llm_base_url": config.LLM_BASE_URL,
         "tts_base_url": config.TTS_BASE_URL,
         "pending_media": [],
+        "uploaded_media": {},
         "tracking": False,
         "tracked_frames": deque(maxlen=30),
         "track_sample_interval": 0.1,
