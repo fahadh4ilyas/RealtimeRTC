@@ -39,5 +39,4 @@ def cleanup_session(session_id, reason=""):
             task.cancel()
         config.pcs.discard(session_data.get("pc"))
         logging.info(f"[{session_id}] Session cleaned up. {reason}")
-    config.uploaded_media.pop(session_id, None)
     return session_data
